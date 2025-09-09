@@ -25,6 +25,14 @@ services:
       traefik.http.routers.angular-dashboard-https.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/en/`) || PathPrefix(`/ar/`) || PathPrefix(`/ja/`))
       traefik.http.routers.angular-dashboard-https.entrypoints: websecure
       traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
+      # CORS middleware for API access from dashboard
+      traefik.http.middlewares.dashboard-cors.headers.accesscontrolallowmethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      traefik.http.middlewares.dashboard-cors.headers.accesscontrolallowheaders: "Content-Type,Authorization,X-CSRFToken,X-Requested-With,Cookie"
+      traefik.http.middlewares.dashboard-cors.headers.accesscontrolalloworigin: "https://${CVAT_HOST:-localhost}"
+      traefik.http.middlewares.dashboard-cors.headers.accesscontrolallowcredentials: "true"
+      traefik.http.middlewares.dashboard-cors.headers.accesscontrolmaxage: "86400"
+      traefik.http.routers.angular-dashboard.middlewares: "dashboard-cors"
+      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors"
     networks:
       - cvat
     depends_on:
@@ -47,6 +55,12 @@ services:
       # CORS for dashboard integration
       CORS_ORIGIN_WHITELIST: "http://${CVAT_HOST:-localhost},https://${CVAT_HOST:-localhost}"
       CORS_ALLOW_CREDENTIALS: "true"
+      # CSRF settings for dashboard
+      # CSRF_TRUSTED_ORIGINS: "https://${CVAT_HOST:-localhost},http://${CVAT_HOST:-localhost}"
+      # CSRF_COOKIE_SAMESITE: "Lax"
+      # CSRF_COOKIE_HTTPONLY: "False"
+      # SESSION_COOKIE_SAMESITE: "Lax"
+      # SESSION_COOKIE_HTTPONLY: "False"
 
   # All workers use your custom build too
   cvat_worker_import:
