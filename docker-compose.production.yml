@@ -21,27 +21,17 @@ services:
       # Dashboard routing
       traefik.http.routers.angular-dashboard.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/en/`) || PathPrefix(`/ar/`) || PathPrefix(`/ja/`))
       traefik.http.routers.angular-dashboard.entrypoints: web
-      traefik.http.routers.angular-dashboard.priority: "100"
       # HTTPS routing
       traefik.http.routers.angular-dashboard-https.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/en/`) || PathPrefix(`/ar/`) || PathPrefix(`/ja/`))
       traefik.http.routers.angular-dashboard-https.entrypoints: websecure
-      traefik.http.routers.angular-dashboard-https.tls: "true"
-      traefik.http.routers.angular-dashboard-https.priority: "100"
-      # CORS middleware for API access
-      traefik.http.middlewares.dashboard-cors.headers.accesscontrolallowmethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-      traefik.http.middlewares.dashboard-cors.headers.accesscontrolallowheaders: "Content-Type,Authorization,X-CSRFToken,X-Requested-With"
-      traefik.http.middlewares.dashboard-cors.headers.accesscontrolalloworigin: "*"
-      traefik.http.middlewares.dashboard-cors.headers.accesscontrolmaxage: "86400"
-      traefik.http.routers.angular-dashboard.middlewares: "dashboard-cors"
-      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors"
+      traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
     networks:
       - cvat
     depends_on:
       - cvat_server
 
-  # CVAT Server with Custom Analytics Extensions
+  # CVAT Server with Custom Analytics - Build your custom image
   cvat_server:
-    # Build your custom CVAT image with all custom APIs
     build:
       context: .
       dockerfile: Dockerfile
@@ -50,80 +40,16 @@ services:
         https_proxy: ${https_proxy:-}
         socks_proxy: ${socks_proxy:-}
         CLAM_AV: ${CLAM_AV:-no}
-        # Production build optimizations
-        CVAT_DEBUG_ENABLED: "no"
-    # Override the default image to use your built image
-    image: cvat/server:custom-analytics
     environment:
       # Custom analytics features
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
-      # Production Django settings
-      DJANGO_SETTINGS_MODULE: cvat.settings.production
-      # Database configuration (use environment variables)
-      CVAT_POSTGRES_PASSWORD: "${CVAT_POSTGRES_PASSWORD:?Please set CVAT_POSTGRES_PASSWORD}"
-      # Security settings
-      ALLOWED_HOSTS: "${CVAT_HOST:-localhost},angular_dashboard,cvat_server"
       # CORS for dashboard integration
       CORS_ORIGIN_WHITELIST: "http://${CVAT_HOST:-localhost},https://${CVAT_HOST:-localhost}"
       CORS_ALLOW_CREDENTIALS: "true"
-      # Custom app configuration - ensure custom app is loaded
-      CVAT_CUSTOM_APPS: "cvat.apps.custom"
 
-  # Database with production settings
-  cvat_db:
-    environment:
-      POSTGRES_PASSWORD: "${CVAT_POSTGRES_PASSWORD:?Please set CVAT_POSTGRES_PASSWORD}"
-      # Production database settings
-      POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=md5"
-    volumes:
-      # Persistent database storage
-      - cvat_db_prod:/var/lib/postgresql/data
-      # Analytics initialization
-      - ./sql/init-analytics.sql:/docker-entrypoint-initdb.d/init-analytics.sql:ro
-    # Production database configuration
-    command: >
-      postgres
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=64MB
-      -c checkpoint_completion_target=0.9
-      -c wal_buffers=16MB
-      -c default_statistics_target=100
-      -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c max_connections=200
-
-  # Redis in-memory with production settings
-  cvat_redis_inmem:
-    command: >
-      redis-server
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
-      --save 60 10000
-    volumes:
-      - cvat_redis_inmem_prod:/data
-
-  # Redis on-disk with production settings
-  cvat_redis_ondisk:
-    command: >
-      redis-server
-      --port 6666
-      --maxmemory 1gb
-      --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
-      --save 60 10000
-      --appendonly yes
-      --appendfsync everysec
-    volumes:
-      - cvat_redis_ondisk_prod:/data
-
-  # Production worker scaling - all use your custom build
+  # All workers use your custom build too
   cvat_worker_import:
-    # Use the same custom build as server
     build:
       context: .
       dockerfile: Dockerfile
@@ -132,16 +58,11 @@ services:
         https_proxy: ${https_proxy:-}
         socks_proxy: ${socks_proxy:-}
         CLAM_AV: ${CLAM_AV:-no}
-        CVAT_DEBUG_ENABLED: "no"
-    image: cvat/server:custom-analytics
-    deploy:
-      replicas: 2
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_export:
-    # Use the same custom build as server
     build:
       context: .
       dockerfile: Dockerfile
@@ -150,16 +71,11 @@ services:
         https_proxy: ${https_proxy:-}
         socks_proxy: ${socks_proxy:-}
         CLAM_AV: ${CLAM_AV:-no}
-        CVAT_DEBUG_ENABLED: "no"
-    image: cvat/server:custom-analytics
-    deploy:
-      replicas: 2
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_annotation:
-    # Use the same custom build as server
     build:
       context: .
       dockerfile: Dockerfile
@@ -168,16 +84,11 @@ services:
         https_proxy: ${https_proxy:-}
         socks_proxy: ${socks_proxy:-}
         CLAM_AV: ${CLAM_AV:-no}
-        CVAT_DEBUG_ENABLED: "no"
-    image: cvat/server:custom-analytics
-    deploy:
-      replicas: 2
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_chunks:
-    # Use the same custom build as server
     build:
       context: .
       dockerfile: Dockerfile
@@ -186,53 +97,6 @@ services:
         https_proxy: ${https_proxy:-}
         socks_proxy: ${socks_proxy:-}
         CLAM_AV: ${CLAM_AV:-no}
-        CVAT_DEBUG_ENABLED: "no"
-    image: cvat/server:custom-analytics
-    deploy:
-      replicas: 2
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
-
-  # Traefik production configuration
-  traefik:
-    # Enable dashboard for monitoring (secure it in production)
-    command:
-      - "--api.dashboard=true"
-      - "--api.insecure=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--certificatesresolvers.lets-encrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.lets-encrypt.acme.email=${ACME_EMAIL:?Please set ACME_EMAIL}"
-      - "--certificatesresolvers.lets-encrypt.acme.storage=/letsencrypt/acme.json"
-      - "--log.level=INFO"
-      - "--accesslog=true"
-      - "--metrics.prometheus=true"
-    labels:
-      # Secure Traefik dashboard
-      traefik.enable: "true"
-      traefik.http.routers.traefik-dashboard.rule: Host(`${CVAT_HOST:-localhost}`) && PathPrefix(`/traefik`)
-      traefik.http.routers.traefik-dashboard.entrypoints: websecure
-      traefik.http.routers.traefik-dashboard.tls.certresolver: lets-encrypt
-      traefik.http.routers.traefik-dashboard.service: api@internal
-      # Add basic auth for dashboard (generate with: htpasswd -nb admin password)
-      traefik.http.routers.traefik-dashboard.middlewares: "traefik-auth"
-      traefik.http.middlewares.traefik-auth.basicauth.users: "${TRAEFIK_DASHBOARD_AUTH:?Please set TRAEFIK_DASHBOARD_AUTH}"
-
-volumes:
-  # Production persistent volumes
-  cvat_db_prod:
-    driver: local
-  cvat_redis_inmem_prod:
-    driver: local
-  cvat_redis_ondisk_prod:
-    driver: local
-  cvat_letsencrypt_prod:
-    driver: local
-
-# Use existing network from base compose
-networks:
-  cvat:
-    external: true
