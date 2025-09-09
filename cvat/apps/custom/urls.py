@@ -9,6 +9,7 @@ from . import views_cvat_integrated
 from . import views_task_analysis
 from . import views_train_metadata
 from . import views_task_extension
+from . import views_analytics
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -44,6 +45,14 @@ urlpatterns = [
          name='task-train-metadata'),
     path('tasks/<int:pk>/verdict/', views_task_extension.TaskVerdictUpdateAPIView.as_view(),
          name='task-verdict-update'),
+
+    # Analytics and reporting endpoints
+    path('train-analytics/', views_analytics.TrainAnalyticsView.as_view(),
+         name='train-analytics'),
+    path('tasks-paginated/', views_analytics.TasksPaginatedView.as_view(),
+         name='tasks-paginated'),
+    path('tasks-quick-stats/', views_analytics.TasksQuickStatsView.as_view(),
+         name='tasks-quick-stats'),
 ]
 
 # Add the router URLs
