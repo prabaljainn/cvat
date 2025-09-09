@@ -1,0 +1,14 @@
+# Development override for running Django server locally
+# This configures OPA to connect to the local Django server instead of the Docker container
+
+services:
+  cvat_opa:
+    command:
+      - run
+      - --server
+      - --log-level=error
+      - --set=services.cvat.url=http://192.168.1.4:8000
+      - --set=bundles.cvat.service=cvat
+      - --set=bundles.cvat.resource=/api/auth/rules
+      - --set=bundles.cvat.polling.min_delay_seconds=5
+      - --set=bundles.cvat.polling.max_delay_seconds=15

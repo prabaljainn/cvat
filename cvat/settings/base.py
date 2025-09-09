@@ -121,6 +121,7 @@ INSTALLED_APPS = [
     "cvat.apps.quality_control",
     "cvat.apps.redis_handler",
     "cvat.apps.consensus",
+    "cvat.apps.custom",
 ]
 
 SITE_ID = 1

@@ -13,6 +13,7 @@ INSTALLED_APPS += [
 ]
 
 ALLOWED_HOSTS.append("testserver")
+ALLOWED_HOSTS.append("host.docker.internal")
 
 # Django-sendfile:
 # https://github.com/moggers87/django-sendfile2
@@ -28,15 +29,43 @@ UI_URL = "{}://{}".format(UI_SCHEME, UI_HOST)
 if UI_PORT and UI_PORT != "80":
     UI_URL += ":{}".format(UI_PORT)
 
-CSRF_TRUSTED_ORIGINS = [UI_URL]
+CSRF_TRUSTED_ORIGINS = [UI_URL, "http://127.0.0.1:3000", "http://localhost:3000"]
 
 # set UI url to redirect to after successful e-mail confirmation
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = "{}/auth/email-confirmation".format(UI_URL)
 ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = "{}/auth/email-verification-sent".format(UI_URL)
 INCORRECT_EMAIL_CONFIRMATION_URL = "{}/auth/incorrect-email-confirmation".format(UI_URL)
 
-CORS_ORIGIN_WHITELIST = [UI_URL]
+CORS_ORIGIN_WHITELIST = [UI_URL, "http://127.0.0.1:3000", "http://localhost:3000"]
 CORS_REPLACE_HTTPS_REFERER = True
+CORS_ALLOW_CREDENTIALS = True
+
+# Additional CORS headers for TUS uploads and development
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    # TUS upload protocol headers
+    'upload-offset',
+    'upload-length',
+    'tus-version',
+    'tus-resumable',
+    'upload-start',
+    'upload-finish',
+]
+
+# Session and CSRF settings for development
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = False  # Allow frontend to access session cookie
+CSRF_COOKIE_HTTPONLY = False     # Allow frontend to access CSRF token
+
 IAM_OPA_HOST = "http://localhost:8181"
 IAM_OPA_DATA_URL = f"{IAM_OPA_HOST}/v1/data"
 
