@@ -100,3 +100,21 @@ services:
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
+  # Override problematic KVRocks with regular Redis
+  cvat_redis_ondisk:
+    image: redis:7.2.3-alpine
+    restart: always
+    command: [
+      "redis-server",
+      "--port", "6666",
+      "--save", "900", "1",
+      "--save", "300", "10",
+      "--save", "60", "10000",
+      "--appendonly", "yes",
+      "--dir", "/data"
+    ]
+    volumes:
+      - cvat_cache_db:/data
+    networks:
+      - cvat
