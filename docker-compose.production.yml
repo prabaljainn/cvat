@@ -17,7 +17,7 @@ services:
       CVAT_HOST: "${CVAT_HOST:-localhost}"
     labels:
       traefik.enable: "true"
-      traefik.http.services.angular-dashboard.loadbalancer.server.port: "8080"
+      traefik.http.services.angular-dashboard.loadbalancer.server.port: "80"
       # Dashboard routing
       traefik.http.routers.angular-dashboard.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/en/`) || PathPrefix(`/ar/`) || PathPrefix(`/ja/`))
       traefik.http.routers.angular-dashboard.entrypoints: web
