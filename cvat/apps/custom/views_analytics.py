@@ -142,7 +142,18 @@ class TasksPaginatedView(APIView):
     """
     Paginated API for tasks with train metadata and annotation statistics.
 
-    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1
+    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1&from_time=2025-01-01T00:00:00Z
+
+    Query Parameters:
+    - page: Page number (default: 1)
+    - page_size: Items per page (default: 20, max: 100)
+    - verdict: Filter by verdict (AC, NA, RJ)
+    - project_id: Filter by project ID
+    - search: Search in task name, owner, project name
+    - from_time/created_after: Tasks created after this datetime (ISO format)
+    - to_time/created_before: Tasks created before this datetime (ISO format)
+    - updated_after: Tasks updated after this datetime (ISO format)
+    - updated_before: Tasks updated before this datetime (ISO format)
 
     Returns paginated list with:
     - Train metadata (train_id, verdict, notes, confidence_score)
@@ -159,6 +170,12 @@ class TasksPaginatedView(APIView):
         verdict_filter = request.query_params.get('verdict')
         project_id_filter = request.query_params.get('project_id')
         search = request.query_params.get('search')
+        from_time = request.query_params.get('from_time')
+        to_time = request.query_params.get('to_time')
+        created_after = request.query_params.get('created_after')
+        created_before = request.query_params.get('created_before')
+        updated_after = request.query_params.get('updated_after')
+        updated_before = request.query_params.get('updated_before')
 
         # Build base queryset with optimizations
         queryset = Task.objects.select_related(
@@ -184,6 +201,49 @@ class TasksPaginatedView(APIView):
                 Q(owner__username__icontains=search) |
                 Q(project__name__icontains=search)
             )
+
+        # Apply datetime filters
+        if from_time or created_after:
+            try:
+                filter_time = from_time or created_after
+                from_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
+                queryset = queryset.filter(created_date__gte=from_datetime)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid from_time/created_after format. Use ISO format: 2025-01-01T00:00:00Z'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if to_time or created_before:
+            try:
+                filter_time = to_time or created_before
+                to_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
+                queryset = queryset.filter(created_date__lte=to_datetime)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid to_time/created_before format. Use ISO format: 2025-12-31T23:59:59Z'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if updated_after:
+            try:
+                updated_datetime = datetime.fromisoformat(updated_after.replace('Z', '+00:00'))
+                queryset = queryset.filter(updated_date__gte=updated_datetime)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid updated_after format. Use ISO format: 2025-01-01T00:00:00Z'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if updated_before:
+            try:
+                updated_datetime = datetime.fromisoformat(updated_before.replace('Z', '+00:00'))
+                queryset = queryset.filter(updated_date__lte=updated_datetime)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid updated_before format. Use ISO format: 2025-12-31T23:59:59Z'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         # Apply verdict filter (need to handle tasks without metadata)
         if verdict_filter:
