@@ -62,6 +62,18 @@ services:
       # SESSION_COOKIE_SAMESITE: "Lax"
       # SESSION_COOKIE_HTTPONLY: "False"
 
+  # CVAT UI with Custom Train Metadata Component
+  cvat_ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+      args:
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        socks_proxy: ${socks_proxy:-}
+    # Override the default image to use your built UI
+    image: cvat/ui:custom-train-metadata
+
   # All workers use your custom build too
   cvat_worker_import:
     build:
