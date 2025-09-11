@@ -59,7 +59,7 @@ class TaskCommentViewSet(viewsets.ModelViewSet):
         )
 
         # Filter by task if provided in URL
-        task_id = self.kwargs.get('task_pk')
+        task_id = self.kwargs.get('task_pk') or self.kwargs.get('task_id')
         if task_id:
             queryset = queryset.filter(task_id=task_id)
 
@@ -79,7 +79,7 @@ class TaskCommentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Create a new comment."""
         # Get task from URL parameter
-        task_id = kwargs.get('task_pk')
+        task_id = kwargs.get('task_pk') or kwargs.get('task_id')
         if task_id:
             task = get_object_or_404(Task, id=task_id)
             # Add task to request data
@@ -165,7 +165,7 @@ class TaskCommentsListView(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Get comments for a specific task."""
-        task_id = self.kwargs.get('task_pk')
+        task_id = self.kwargs.get('task_id') or self.kwargs.get('task_pk')
         if not task_id:
             return TaskComment.objects.none()
 
