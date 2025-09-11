@@ -1,0 +1,140 @@
+// Copyright (C) 2025 CVAT Custom Task Comments
+// SPDX-License-Identifier: MIT
+
+.cvat-task-comments {
+  .ant-card {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .ant-list-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .ant-list-item-meta {
+    margin-bottom: 8px;
+  }
+
+  .ant-list-item-meta-title {
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+
+  .ant-list-item-meta-description {
+    font-size: 12px;
+    color: #999;
+  }
+
+  .ant-tag {
+    margin: 0 4px 0 0;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 18px;
+    padding: 0 6px;
+  }
+
+  .ant-empty {
+    padding: 40px 0;
+  }
+
+  .ant-typography {
+    margin-bottom: 0;
+  }
+
+  // Comment threading styles
+  .comment-thread {
+    border-left: 2px solid #f0f0f0;
+    margin-left: 40px;
+    padding-left: 16px;
+    margin-top: 8px;
+  }
+
+  // Comment form styles
+  .comment-form {
+    background: #fafafa;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+
+    .ant-input {
+      border-radius: 4px;
+    }
+
+    .ant-btn {
+      border-radius: 4px;
+    }
+  }
+
+  // Stats card styles
+  .stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+
+    .ant-card-body {
+      padding: 12px 16px;
+    }
+
+    .ant-tag {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+    }
+  }
+
+  // Responsive design
+  @media (max-width: 768px) {
+    .ant-list-item-meta-avatar {
+      margin-right: 8px;
+    }
+
+    .ant-list-item-meta-title {
+      font-size: 13px;
+    }
+
+    .ant-tag {
+      font-size: 10px;
+      padding: 0 4px;
+    }
+  }
+
+  // Animation for new comments
+  .comment-enter {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  .comment-enter-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 300ms, transform 300ms;
+  }
+
+  // Hover effects
+  .ant-list-item:hover {
+    background-color: #fafafa;
+    border-radius: 4px;
+    margin: 0 -8px;
+    padding: 12px 8px;
+  }
+
+  // Button styles
+  .ant-btn-link {
+    color: #1890ff;
+    font-size: 12px;
+
+    &:hover {
+      color: #40a9ff;
+    }
+  }
+
+  // Loading state
+  .ant-spin-nested-loading {
+    min-height: 200px;
+  }
+}

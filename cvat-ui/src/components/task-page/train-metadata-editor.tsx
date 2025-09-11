@@ -212,9 +212,9 @@ const TrainMetadataEditor: React.FC<TrainMetadataEditorProps> = ({ taskId, taskN
                                     onChange={(value) => setEditData(prev => ({ ...prev, verdict: value }))}
                                     style={{ width: '100%' }}
                                 >
-                                    <Option value="AC">✅ Accepted</Option>
-                                    <Option value="NA">⚪ Not Applicable</Option>
-                                    <Option value="RJ">❌ Rejected</Option>
+                                    <Option value="AC">Accepted</Option>
+                                    <Option value="NA">Not Applicable</Option>
+                                    <Option value="RJ">Rejected</Option>
                                 </Select>
                             </Col>
                         </Row>
@@ -280,13 +280,13 @@ const TrainMetadataEditor: React.FC<TrainMetadataEditorProps> = ({ taskId, taskN
                                 </span>
                                 <div style={{ marginTop: '4px' }}>
                                     <Button size="small" onClick={() => updateVerdict('AC')} disabled={metadata.verdict === 'AC'}>
-                                        ✅ Accept
+                                        Accept
                                     </Button>
                                     <Button size="small" onClick={() => updateVerdict('NA')} disabled={metadata.verdict === 'NA'} style={{ margin: '0 4px' }}>
-                                        ⚪ N/A
+                                        N/A
                                     </Button>
                                     <Button size="small" onClick={() => updateVerdict('RJ')} disabled={metadata.verdict === 'RJ'}>
-                                        ❌ Reject
+                                        Reject
                                     </Button>
                                 </div>
                             </Col>

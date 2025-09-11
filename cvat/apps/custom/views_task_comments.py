@@ -46,6 +46,22 @@ class TaskCommentViewSet(viewsets.ModelViewSet):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    # IAM organization field for CVAT's permission system
+    iam_organization_field = 'task__organization'
+
+    # Filter and search fields for CVAT compatibility
+    search_fields = ('message', 'author__username')
+    filter_fields = ['task', 'author', 'comment_type', 'parent_comment']
+    simple_filters = ['task', 'author', 'comment_type']
+    ordering_fields = ['created_date', 'updated_date', 'id']
+    ordering = ['-created_date']
+
+    # Lookup fields for filtering
+    lookup_fields = {
+        'author': 'author__username',
+        'task': 'task__id',
+    }
+
     def get_queryset(self):
         """Get comments with optimized queries."""
         queryset = TaskComment.objects.select_related(
@@ -163,6 +179,14 @@ class TaskCommentsListView(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = TaskCommentSimpleSerializer
 
+    # IAM organization field for CVAT's permission system
+    iam_organization_field = 'task__organization'
+
+    # Filter and search fields for CVAT compatibility
+    search_fields = ('message', 'author__username')
+    filter_fields = ['task', 'author', 'comment_type']
+    ordering = ['-created_date']
+
     def get_queryset(self):
         """Get comments for a specific task."""
         task_id = self.kwargs.get('task_id') or self.kwargs.get('task_pk')
@@ -217,6 +241,9 @@ class TaskCommentCreateView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    # IAM organization field for CVAT's permission system
+    iam_organization_field = 'task__organization'
+
     def post(self, request):
         """Create a new task comment."""
         serializer = TaskCommentCreateSerializer(
@@ -240,6 +267,9 @@ class TaskCommentsStatsView(APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+
+    # IAM organization field for CVAT's permission system
+    iam_organization_field = 'task__organization'
 
     def get(self, request):
         """Get comment statistics for a task or all tasks."""

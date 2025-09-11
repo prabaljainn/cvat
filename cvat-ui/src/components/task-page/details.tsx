@@ -26,6 +26,7 @@ import CloudStorageEditor from './cloud-storage-editor';
 import LabelsEditorComponent from '../labels-editor/labels-editor';
 import ProjectSubsetField from '../create-task-page/project-subset-field';
 import TrainMetadataEditor from './train-metadata-editor';
+import TaskCommentsComponent from './task-comments';
 
 interface OwnProps {
     task: Task;
@@ -267,6 +268,14 @@ class DetailsComponent extends React.PureComponent<Props, State> {
                         <Row>
                             <Col span={24}>
                                 <TrainMetadataEditor
+                                    taskId={taskInstance.id}
+                                    taskName={taskInstance.name}
+                                />
+                            </Col>
+                        </Row>
+                        <Row>
+                            <Col span={24}>
+                                <TaskCommentsComponent
                                     taskId={taskInstance.id}
                                     taskName={taskInstance.name}
                                 />
