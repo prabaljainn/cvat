@@ -7,6 +7,7 @@ Custom models to extend CVAT functionality with train event metadata.
 
 from django.db import models
 from cvat.apps.engine.models import Task
+from django.contrib.auth.models import User
 
 
 class TaskTrainMetadata(models.Model):
@@ -94,3 +95,112 @@ class TaskTrainMetadata(models.Model):
             }
         )
         return metadata, created
+
+
+class TaskComment(models.Model):
+    """
+    Task-level comments for general discussions and notes.
+
+    Unlike CVAT's Issue-based comments (which are frame-specific),
+    these comments are directly attached to tasks for general discussions.
+
+    Features:
+    - Direct Task → Comment relationship (1:many)
+    - Comment threading/replies support
+    - Comment type categorization
+    - Edit tracking
+    """
+
+    # Core fields
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='task_comments',
+        help_text="Task this comment belongs to"
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='task_comments',
+        help_text="User who created this comment"
+    )
+
+    message = models.TextField(
+        help_text="Comment content"
+    )
+
+    # Timestamps
+    created_date = models.DateTimeField(auto_now_add=True)
+    updated_date = models.DateTimeField(auto_now=True)
+    is_edited = models.BooleanField(
+        default=False,
+        help_text="True if comment has been edited after creation"
+    )
+
+    # Comment categorization
+    class CommentType(models.TextChoices):
+        GENERAL = 'GEN', 'General'
+        FEEDBACK = 'FB', 'Feedback'
+        ISSUE = 'ISS', 'Issue'
+        REVIEW = 'REV', 'Review'
+        NOTE = 'NOTE', 'Note'
+        QUESTION = 'Q', 'Question'
+
+    comment_type = models.CharField(
+        max_length=4,
+        choices=CommentType.choices,
+        default=CommentType.GENERAL,
+        help_text="Comment category for organization"
+    )
+
+    # Threading support for replies
+    parent_comment = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies',
+        help_text="Parent comment if this is a reply"
+    )
+
+    class Meta:
+        verbose_name = "Task Comment"
+        verbose_name_plural = "Task Comments"
+        ordering = ['-created_date']  # Newest first
+        db_table = "custom_task_comment"
+        indexes = [
+            models.Index(fields=['task', '-created_date']),
+            models.Index(fields=['author', '-created_date']),
+        ]
+
+    def __str__(self):
+        preview = self.message[:50] + "..." if len(self.message) > 50 else self.message
+        return f"Comment on Task {self.task.id} by {self.author.username}: {preview}"
+
+    def save(self, *args, **kwargs):
+        # Track if this is an edit
+        if self.pk and self._state.adding is False:
+            self.is_edited = True
+        super().save(*args, **kwargs)
+
+    @property
+    def is_reply(self):
+        """Check if this comment is a reply to another comment."""
+        return self.parent_comment is not None
+
+    @property
+    def reply_count(self):
+        """Get number of replies to this comment."""
+        return self.replies.count()
+
+    def get_thread_comments(self):
+        """Get all comments in this thread (parent + all replies)."""
+        if self.parent_comment:
+            # This is a reply, get the parent's thread
+            return self.parent_comment.get_thread_comments()
+        else:
+            # This is a parent, return self + all replies
+            return TaskComment.objects.filter(
+                models.Q(id=self.id) | models.Q(parent_comment=self)
+            ).order_by('created_date')

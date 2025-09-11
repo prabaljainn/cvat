@@ -1,7 +1,7 @@
 # Copyright (C) 2025 CVAT Custom Module
 # SPDX-License-Identifier: MIT
 
-from django.urls import path
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from . import views_optimized
@@ -10,10 +10,15 @@ from . import views_task_analysis
 from . import views_train_metadata
 from . import views_task_extension
 from . import views_analytics
+from . import views_task_comments
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
 router.register('tasks-extended', views_task_extension.ExtendedTaskViewSet, basename='tasks-extended')
+
+# Task Comments router
+comments_router = DefaultRouter(trailing_slash=False)
+comments_router.register('comments', views_task_comments.TaskCommentViewSet, basename='comments')
 
 urlpatterns = [
     # Frame download endpoints
@@ -53,7 +58,18 @@ urlpatterns = [
          name='tasks-paginated'),
     path('tasks-quick-stats/', views_analytics.TasksQuickStatsView.as_view(),
          name='tasks-quick-stats'),
+
+    # Task Comments endpoints
+    path('task-comments/create/', views_task_comments.TaskCommentCreateView.as_view(),
+         name='task-comment-create'),
+    path('task-comments/stats/', views_task_comments.TaskCommentsStatsView.as_view(),
+         name='task-comments-stats'),
+    path('tasks/<int:task_id>/comments/', views_task_comments.TaskCommentsListView.as_view({'get': 'list'}),
+         name='task-comments-list'),
+    path('tasks/<int:task_id>/comments/create/', views_task_comments.TaskCommentCreateView.as_view(),
+         name='task-comments-create'),
 ]
 
 # Add the router URLs
 urlpatterns += router.urls
+urlpatterns += comments_router.urls

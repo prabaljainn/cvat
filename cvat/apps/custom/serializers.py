@@ -7,7 +7,8 @@ Custom serializers to extend CVAT Task API with train metadata.
 
 from rest_framework import serializers
 from cvat.apps.engine.models import Task
-from .models import TaskTrainMetadata
+from .models import TaskTrainMetadata, TaskComment
+from django.contrib.auth.models import User
 
 
 class TaskTrainMetadataSerializer(serializers.ModelSerializer):
@@ -178,3 +179,136 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
             data['confidence_score'] = None
 
         return data
+
+
+# ==========================================
+# Task Comment Serializers
+# ==========================================
+
+class TaskCommentAuthorSerializer(serializers.ModelSerializer):
+    """Serializer for comment author information."""
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name']
+        read_only_fields = fields
+
+
+class TaskCommentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for TaskComment model with full details.
+
+    Features:
+    - Author information
+    - Reply count and threading
+    - Comment type display
+    - Edit tracking
+    """
+
+    author = TaskCommentAuthorSerializer(read_only=True)
+    author_id = serializers.IntegerField(write_only=True, required=False)
+
+    # Display fields
+    comment_type_display = serializers.CharField(source='get_comment_type_display', read_only=True)
+    is_reply = serializers.BooleanField(read_only=True)
+    reply_count = serializers.IntegerField(read_only=True)
+
+    # Nested replies (optional, can be heavy for deep threads)
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskComment
+        fields = [
+            'id', 'task', 'author', 'author_id', 'message',
+            'comment_type', 'comment_type_display',
+            'parent_comment', 'is_reply', 'reply_count',
+            'created_date', 'updated_date', 'is_edited',
+            'replies'
+        ]
+        read_only_fields = ['id', 'created_date', 'updated_date', 'is_edited']
+
+    def get_replies(self, obj):
+        """Get direct replies to this comment (not full thread)."""
+        if hasattr(obj, '_prefetched_replies'):
+            # Use prefetched data if available
+            replies = obj._prefetched_replies
+        else:
+            # Limit to direct replies only to avoid deep recursion
+            replies = obj.replies.all()[:10]  # Limit for performance
+
+        return TaskCommentSimpleSerializer(replies, many=True).data
+
+    def create(self, validated_data):
+        # Set author from request user if not provided
+        if 'author_id' not in validated_data:
+            validated_data['author'] = self.context['request'].user
+        else:
+            validated_data['author_id'] = validated_data.pop('author_id')
+
+        return super().create(validated_data)
+
+
+class TaskCommentSimpleSerializer(serializers.ModelSerializer):
+    """
+    Simplified TaskComment serializer for nested use and lists.
+
+    Avoids deep nesting and heavy queries for better performance.
+    """
+
+    author = TaskCommentAuthorSerializer(read_only=True)
+    comment_type_display = serializers.CharField(source='get_comment_type_display', read_only=True)
+    is_reply = serializers.BooleanField(read_only=True)
+    reply_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = TaskComment
+        fields = [
+            'id', 'author', 'message',
+            'comment_type', 'comment_type_display',
+            'parent_comment', 'is_reply', 'reply_count',
+            'created_date', 'updated_date', 'is_edited'
+        ]
+        read_only_fields = fields
+
+
+class TaskCommentCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating new task comments.
+
+    Simplified for creation with validation.
+    """
+
+    class Meta:
+        model = TaskComment
+        fields = ['task', 'message', 'comment_type', 'parent_comment']
+
+    def validate_parent_comment(self, value):
+        """Ensure parent comment belongs to the same task."""
+        if value and hasattr(self, 'initial_data') and 'task' in self.initial_data:
+            task_id = self.initial_data['task']
+            if value.task_id != task_id:
+                raise serializers.ValidationError(
+                    "Parent comment must belong to the same task."
+                )
+        return value
+
+    def create(self, validated_data):
+        # Set author from request user
+        validated_data['author'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class TaskCommentUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating task comments.
+
+    Only allows updating message and comment_type.
+    """
+
+    class Meta:
+        model = TaskComment
+        fields = ['message', 'comment_type']
+
+    def update(self, instance, validated_data):
+        # The model's save method will automatically set is_edited=True
+        return super().update(instance, validated_data)
