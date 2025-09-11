@@ -142,14 +142,15 @@ class TasksPaginatedView(APIView):
     """
     Paginated API for tasks with train metadata and annotation statistics.
 
-    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1&from_time=2025-01-01T00:00:00Z
+    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1&from_time=2025-01-01T00:00:00Z&search=Task&train_id=TRAIN_001
 
     Query Parameters:
     - page: Page number (default: 1)
     - page_size: Items per page (default: 20, max: 100)
     - verdict: Filter by verdict (AC, NA, RJ)
     - project_id: Filter by project ID
-    - search: Search in task name, owner, project name
+    - search: 🔍 SINGLE SEARCH BAR with PARTIAL MATCHING - searches task name, train_id, owner, project, and notes
+    - train_id: Specific train ID search with partial matching (optional, for advanced filtering)
     - from_time/created_after: Tasks created after this datetime (ISO format)
     - to_time/created_before: Tasks created before this datetime (ISO format)
     - updated_after: Tasks updated after this datetime (ISO format)
@@ -195,12 +196,27 @@ class TasksPaginatedView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(owner__username__icontains=search) |
-                Q(project__name__icontains=search)
-            )
+        # Enhanced search functionality with partial matching
+        train_id_search = request.query_params.get('train_id')
+
+        if search or train_id_search:
+            search_conditions = Q()
+
+            if search:
+                # Partial matching search across all fields (case-insensitive)
+                search_conditions |= (
+                    Q(name__icontains=search) |                           # Task name
+                    Q(train_metadata__train_id__icontains=search) |       # Train ID
+                    Q(owner__username__icontains=search) |                # Owner username
+                    Q(project__name__icontains=search) |                  # Project name
+                    Q(train_metadata__notes__icontains=search)            # Train notes
+                )
+
+            if train_id_search:
+                # Specific train ID search with partial matching
+                search_conditions |= Q(train_metadata__train_id__icontains=train_id_search)
+
+            queryset = queryset.filter(search_conditions).distinct()
 
         # Apply datetime filters
         if from_time or created_after:
