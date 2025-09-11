@@ -16,9 +16,9 @@ from . import views_task_comments
 router = DefaultRouter(trailing_slash=False)
 router.register('tasks-extended', views_task_extension.ExtendedTaskViewSet, basename='tasks-extended')
 
-# Task Comments router
+# Task Comments router - register with proper viewset
 comments_router = DefaultRouter(trailing_slash=False)
-comments_router.register('comments', views_task_comments.TaskCommentViewSet, basename='comments')
+comments_router.register(r'comments', views_task_comments.TaskCommentViewSet, basename='task-comments')
 
 urlpatterns = [
     # Frame download endpoints
@@ -73,3 +73,10 @@ urlpatterns = [
 # Add the router URLs
 urlpatterns += router.urls
 urlpatterns += comments_router.urls
+
+# Debug: Print registered URLs (remove in production)
+# print("Custom app URLs registered:")
+# for pattern in urlpatterns:
+#     print(f"  - {pattern}")
+# for pattern in comments_router.urls:
+#     print(f"  - Router: {pattern}")
