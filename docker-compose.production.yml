@@ -20,8 +20,6 @@ services:
       traefik.enable: "true"
       traefik.http.services.angular-dashboard.loadbalancer.server.port: "80"
       # ---- Middlewares ----
-      # Strip /dashboard so Angular can keep base href="/"
-#      traefik.http.middlewares.dashboard-strip-prefix.stripprefix.prefixes: "${DASHBOARD_PREFIX}"
 
       # (Optional) CORS (camelCase keys)
       traefik.http.middlewares.dashboard-cors.headers.accessControlAllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
@@ -41,26 +39,6 @@ services:
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Port: "443"
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Ssl: "on"
 
-      # ---- Router A: CVAT_HOST under /dashboard (fallback option) ----
-      traefik.http.routers.angular-dashboard.rule: >
-        Host(`${CVAT_HOST:-localhost}`) &&
-        (PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/en/`) ||
-         PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ar/`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ja/`))
-      traefik.http.routers.angular-dashboard.entrypoints: web
-      traefik.http.routers.angular-dashboard.middlewares: "dashboard-https-redirect"
-      traefik.http.routers.angular-dashboard.priority: "1100"
-
-      traefik.http.routers.angular-dashboard-https.rule: >
-        Host(`${CVAT_HOST:-localhost}`) &&
-        (PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/en/`) ||
-         PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ar/`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ja/`))
-      traefik.http.routers.angular-dashboard-https.entrypoints: websecure
-      traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
-      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors,dashboard-security,dashboard-strip-prefix"
-      traefik.http.routers.angular-dashboard-https.priority: "1100"
-
-      # Strip prefix middleware
-      traefik.http.middlewares.dashboard-strip-prefix.stripprefix.prefixes: "${DASHBOARD_PREFIX:-/dashboard}"
 
       # ---- Router B: Dedicated DASHBOARD_HOST at site root ----
       # HTTP to HTTPS redirect for DASHBOARD_HOST

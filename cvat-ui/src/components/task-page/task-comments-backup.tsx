@@ -18,7 +18,6 @@ import {
     Spin,
     Empty,
     Tooltip,
-    Popconfirm,
 } from 'antd';
 import {
     CommentOutlined,
@@ -27,7 +26,6 @@ import {
     UserOutlined,
     ClockCircleOutlined,
     EditOutlined,
-    DeleteOutlined,
 } from '@ant-design/icons';
 import moment from 'moment';
 
@@ -53,25 +51,18 @@ interface TaskComment {
     comment_type_display: string;
     parent_comment: number | null;
     is_reply: boolean;
-    is_edited: boolean;
+    reply_count: number;
     created_date: string;
     updated_date: string;
-    reply_count: number;
+    is_edited: boolean;
 }
 
-interface CommentStats {
+interface TaskCommentsStats {
     total_comments: number;
-    comment_types: Record<string, { count: number; display: string }>;
+    comment_types: Record<string, { name: string; count: number }>;
     recent_activity: {
         comments_last_week: number;
-        comments_last_month: number;
     };
-}
-
-interface NewComment {
-    message: string;
-    type: string;
-    parentId: number | null;
 }
 
 interface Props {
@@ -81,12 +72,25 @@ interface Props {
 
 interface State {
     comments: TaskComment[];
-    stats: CommentStats | null;
+    stats: TaskCommentsStats | null;
     loading: boolean;
-    showCommentForm: boolean;
-    newComment: NewComment;
     submitting: boolean;
+    showCommentForm: boolean;
+    newComment: {
+        message: string;
+        type: string;
+        parentId: number | null;
+    };
 }
+
+const COMMENT_TYPES = [
+    { value: 'GEN', label: 'General', color: 'blue' },
+    { value: 'FB', label: 'Feedback', color: 'green' },
+    { value: 'ISS', label: 'Issue', color: 'red' },
+    { value: 'REV', label: 'Review', color: 'orange' },
+    { value: 'NOTE', label: 'Note', color: 'purple' },
+    { value: 'Q', label: 'Question', color: 'cyan' }
+];
 
 class TaskCommentsComponent extends React.PureComponent<Props, State> {
     constructor(props: Props) {
@@ -94,26 +98,20 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
         this.state = {
             comments: [],
             stats: null,
-            loading: false,
-            showCommentForm: false,
-            newComment: { message: '', type: 'GEN', parentId: null },
+            loading: true,
             submitting: false,
+            showCommentForm: false,
+            newComment: {
+                message: '',
+                type: 'GEN',
+                parentId: null
+            }
         };
     }
 
-    componentDidMount(): void {
+    public componentDidMount(): void {
         this.loadComments();
         this.loadStats();
-    }
-
-    private getCommentTypeColor(type: string): string {
-        const colors: Record<string, string> = {
-            GEN: 'blue',
-            QUE: 'orange',
-            ISS: 'red',
-            SUG: 'green',
-        };
-        return colors[type] || 'default';
     }
 
     private async loadComments(): Promise<void> {
@@ -127,25 +125,26 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
             const response = await core.server.request(
                 `/api/custom/tasks/${taskId}/comments/`,
                 {
-                    method: 'GET',
+                    method: 'GET'
                 }
             );
 
             console.log('Comments response:', response);
 
             // Get data from Axios response
-            const { data } = response;
+            const data = response.data;
             console.log('Comments data:', data);
 
             this.setState({
                 comments: data.results || [],
-                loading: false,
+                loading: false
             });
+
         } catch (error) {
             console.error('Error loading comments:', error);
             notification.error({
                 message: 'Failed to load comments',
-                description: 'Could not retrieve task comments. Please try again.',
+                description: 'Could not retrieve task comments. Please try again.'
             });
             this.setState({ loading: false });
         }
@@ -158,13 +157,14 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
             const response = await core.server.request(
                 `/api/custom/task-comments/stats/?task_id=${taskId}`,
                 {
-                    method: 'GET',
+                    method: 'GET'
                 }
             );
 
             // Get data from Axios response
             const stats = response.data;
             this.setState({ stats });
+
         } catch (error) {
             console.error('Error loading stats:', error);
         }
@@ -177,7 +177,7 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
         if (!newComment.message.trim()) {
             notification.warning({
                 message: 'Empty Comment',
-                description: 'Please enter a comment message.',
+                description: 'Please enter a comment message.'
             });
             return;
         }
@@ -189,14 +189,14 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 task: taskId,
                 message: newComment.message.trim(),
                 comment_type: newComment.type,
-                ...(newComment.parentId && { parent_comment: newComment.parentId }),
+                ...(newComment.parentId && { parent_comment: newComment.parentId })
             };
 
             const response = await core.server.request(
                 '/api/custom/task-comments/create/',
                 {
                     method: 'POST',
-                    data: commentData,
+                    data: commentData
                 }
             );
 
@@ -204,123 +204,95 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
 
             notification.success({
                 message: 'Comment Added',
-                description: 'Your comment has been added successfully.',
+                description: 'Your comment has been added successfully.'
             });
 
             // Reset form and reload comments
             this.setState({
                 newComment: { message: '', type: 'GEN', parentId: null },
                 showCommentForm: false,
-                submitting: false,
+                submitting: false
             });
 
             await this.loadComments();
             await this.loadStats();
+
         } catch (error) {
             console.error('Error creating comment:', error);
             notification.error({
-                message: 'Failed to create comment',
-                description: 'Could not create comment. Please try again.',
+                message: 'Failed to Add Comment',
+                description: 'Could not add your comment. Please try again.'
             });
             this.setState({ submitting: false });
         }
     }
 
-    private async deleteComment(commentId: number): Promise<void> {
-        try {
-            const response = await core.server.request(
-                `/api/custom/comments/${commentId}/`,
-                {
-                    method: 'DELETE',
-                }
-            );
-
-            console.log('Delete response:', response);
-
-            notification.success({
-                message: 'Comment Deleted',
-                description: 'Comment has been deleted successfully.',
-            });
-
-            // Reload comments and stats
-            await this.loadComments();
-            await this.loadStats();
-        } catch (error: any) {
-            console.error('Error deleting comment:', error);
-
-            // Check if it's a permission error
-            if (error.response && error.response.status === 403) {
-                notification.error({
-                    message: 'Permission Denied',
-                    description: 'You can only delete your own comments.',
-                });
-            } else if (error.response && error.response.status === 404) {
-                notification.error({
-                    message: 'Comment Not Found',
-                    description: 'This comment may have already been deleted.',
-                });
-            } else {
-                notification.error({
-                    message: 'Failed to delete comment',
-                    description: 'Could not delete comment. Please try again.',
-                });
-            }
-        }
+    private getCommentTypeColor(type: string): string {
+        const commentType = COMMENT_TYPES.find(t => t.value === type);
+        return commentType?.color || 'default';
     }
 
-    private renderCommentForm(): JSX.Element | null {
-        const { showCommentForm, newComment, submitting } = this.state;
+    private formatDate(dateString: string): string {
+        return moment(dateString).format('MMM DD, YYYY HH:mm');
+    }
 
-        if (!showCommentForm) return null;
+    private renderCommentForm(): JSX.Element {
+        const { newComment, submitting } = this.state;
 
         return (
-            <Card size='small' style={{ marginBottom: 16 }}>
-                <Space direction='vertical' style={{ width: '100%' }}>
+            <Card
+                size="small"
+                title="Add Comment"
+                style={{ marginBottom: 16 }}
+                extra={
+                    <Button
+                        size="small"
+                        onClick={() => this.setState({ showCommentForm: false })}
+                    >
+                        Cancel
+                    </Button>
+                }
+            >
+                <Space direction="vertical" style={{ width: '100%' }}>
                     <Select
                         value={newComment.type}
-                        onChange={(value) => this.setState({
-                            newComment: { ...newComment, type: value },
+                        onChange={(type) => this.setState({
+                            newComment: { ...newComment, type }
                         })}
-                        style={{ width: 200 }}
+                        style={{ width: 120 }}
+                        size="small"
                     >
-                        <Option value='GEN'>General</Option>
-                        <Option value='QUE'>Question</Option>
-                        <Option value='ISS'>Issue</Option>
-                        <Option value='SUG'>Suggestion</Option>
+                        {COMMENT_TYPES.map(type => (
+                            <Option key={type.value} value={type.value}>
+                                <Tag color={type.color} style={{ margin: 0 }}>
+                                    {type.label}
+                                </Tag>
+                            </Option>
+                        ))}
                     </Select>
 
                     <TextArea
                         value={newComment.message}
                         onChange={(e) => this.setState({
-                            newComment: { ...newComment, message: e.target.value },
+                            newComment: { ...newComment, message: e.target.value }
                         })}
-                        placeholder={
-                            newComment.parentId
-                                ? 'Write a reply...'
-                                : 'Write a comment...'
-                        }
-                        rows={4}
+                        placeholder="Enter your comment..."
+                        rows={3}
                         maxLength={1000}
                         showCount
                     />
 
-                    <Space>
+                    <div style={{ textAlign: 'right' }}>
                         <Button
-                            type='primary'
+                            type="primary"
+                            size="small"
                             loading={submitting}
                             onClick={() => this.createComment()}
+                            disabled={!newComment.message.trim()}
                         >
-                            {newComment.parentId ? 'Reply' : 'Add Comment'}
+                            Add Comment
                         </Button>
-                        <Button
-                            onClick={() => this.setState({
-                                showCommentForm: false,
-                                newComment: { message: '', type: 'GEN', parentId: null },
-                            })}
-                        >
-                            Cancel
-                        </Button>
-                    </Space>
+                    </div>
                 </Space>
             </Card>
         );
@@ -336,12 +308,14 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 <List.Item.Meta
                     avatar={
                         <Avatar
-                            size='small'
+                            size="small"
                             icon={<UserOutlined />}
                             style={{ backgroundColor: '#1890ff' }}
-                        />
+                        >
+                            {authorName.charAt(0).toUpperCase()}
+                        </Avatar>
                     }
-                    title={(
+                    title={
                         <Space>
                             <Text strong>{authorName}</Text>
                             <Tag
@@ -350,73 +324,53 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                                 {comment.comment_type_display}
                             </Tag>
                             {comment.is_reply && (
-                                <Tag color='default'>
+                                <Tag color="default">
                                     Reply
                                 </Tag>
                             )}
                             {comment.is_edited && (
-                                <Tooltip title='This comment has been edited'>
+                                <Tooltip title="This comment has been edited">
                                     <EditOutlined style={{ color: '#999', fontSize: '12px' }} />
                                 </Tooltip>
                             )}
                         </Space>
-                    )}
-                    description={(
+                    }
+                    description={
                         <Space>
                             <ClockCircleOutlined />
-                            <Text type='secondary'>
-                                {moment(comment.created_date).format('MMM DD, YYYY HH:mm')}
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                                {this.formatDate(comment.created_date)}
                             </Text>
-                            {!comment.is_reply && comment.reply_count > 0 && (
-                                <Text type='secondary'>
-                                    {comment.reply_count} {comment.reply_count === 1 ? 'reply' : 'replies'}
+                            {comment.reply_count > 0 && (
+                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                    • {comment.reply_count} {comment.reply_count === 1 ? 'reply' : 'replies'}
                                 </Text>
                             )}
                         </Space>
-                    )}
+                    }
                 />
                 <div style={{ marginLeft: 40 }}>
                     <Paragraph style={{ marginBottom: 8 }}>
                         {comment.message}
                     </Paragraph>
-                    <Space>
-                        {!comment.is_reply && (
-                            <Button
-                                type='link'
-                                size='small'
-                                icon={<CommentOutlined />}
-                                onClick={() => this.setState({
-                                    showCommentForm: true,
-                                    newComment: {
-                                        message: '',
-                                        type: 'GEN',
-                                        parentId: comment.id,
-                                    },
-                                })}
-                                style={{ padding: 0, height: 'auto' }}
-                            >
-                                Reply
-                            </Button>
-                        )}
-                        <Popconfirm
-                            title='Delete Comment'
-                            description='Are you sure you want to delete this comment?'
-                            onConfirm={() => this.deleteComment(comment.id)}
-                            okText='Yes'
-                            cancelText='No'
-                            placement='topRight'
+                    {!comment.is_reply && (
+                        <Button
+                            type="link"
+                            size="small"
+                            icon={<CommentOutlined />}
+                            onClick={() => this.setState({
+                                showCommentForm: true,
+                                newComment: {
+                                    message: '',
+                                    type: 'GEN',
+                                    parentId: comment.id
+                                }
+                            })}
+                            style={{ padding: 0, height: 'auto' }}
                         >
-                            <Button
-                                type='link'
-                                size='small'
-                                icon={<DeleteOutlined />}
-                                danger
-                                style={{ padding: 0, height: 'auto' }}
-                            >
-                                Delete
-                            </Button>
-                        </Popconfirm>
-                    </Space>
+                            Reply
+                        </Button>
+                    )}
                 </div>
             </List.Item>
         );
@@ -428,8 +382,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
         if (!stats) return null;
 
         return (
-            <Card size='small' style={{ marginBottom: 16 }}>
-                <Space split={<Divider type='vertical' />}>
+            <Card size="small" style={{ marginBottom: 16 }}>
+                <Space split={<Divider type="vertical" />}>
                     <Text>
                         <strong>{stats.total_comments}</strong> Total Comments
                     </Text>
@@ -442,8 +396,9 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                                 <Tag
                                     key={type}
                                     color={this.getCommentTypeColor(type)}
+                                    style={{ margin: 0 }}
                                 >
-                                    {data.display}: {data.count}
+                                    {data.name}: {data.count}
                                 </Tag>
                             )
                         ))}
@@ -466,18 +421,18 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
         }));
 
         return (
-            <div className='cvat-task-comments'>
+            <div className="cvat-task-comments">
                 <Card
-                    title={(
+                    title={
                         <Space>
                             <CommentOutlined />
                             <span>Task Comments</span>
                         </Space>
-                    )}
-                    extra={(
+                    }
+                    extra={
                         <Space>
                             <Button
-                                size='small'
+                                size="small"
                                 icon={<ReloadOutlined />}
                                 onClick={() => {
                                     this.loadComments();
@@ -488,8 +443,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                             </Button>
                             {!showCommentForm && (
                                 <Button
-                                    type='primary'
-                                    size='small'
+                                    type="primary"
+                                    size="small"
                                     icon={<PlusOutlined />}
                                     onClick={() => this.setState({ showCommentForm: true })}
                                 >
@@ -497,40 +452,41 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                                 </Button>
                             )}
                         </Space>
-                    )}
+                    }
                     style={{ marginTop: 16 }}
                 >
                     {this.renderStats()}
-                    {this.renderCommentForm()}
+
+                    {showCommentForm && this.renderCommentForm()}
 
                     <Spin spinning={loading}>
-                        {threaded.length > 0 ? (
-                            <List
-                                dataSource={threaded}
-                                renderItem={(comment) => (
-                                    <div key={comment.id}>
-                                        {this.renderComment(comment)}
-                                        {comment.replies.map((reply) => (
-                                            <div key={reply.id} style={{ marginLeft: 40 }}>
-                                                {this.renderComment(reply)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            />
-                        ) : (
+                        {comments.length === 0 && !loading ? (
                             <Empty
-                                description='No comments yet'
+                                description="No comments yet"
                                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                             >
                                 <Button
-                                    type='primary'
-                                    icon={<PlusOutlined />}
+                                    type="primary"
                                     onClick={() => this.setState({ showCommentForm: true })}
                                 >
                                     Add First Comment
                                 </Button>
                             </Empty>
+                        ) : (
+                            <List
+                                itemLayout="vertical"
+                                dataSource={threaded}
+                                renderItem={(comment) => (
+                                    <div key={comment.id}>
+                                        {this.renderComment(comment)}
+                                        {comment.replies && comment.replies.length > 0 && (
+                                            <div style={{ marginLeft: 40, paddingLeft: 16, borderLeft: '2px solid #f0f0f0' }}>
+                                                {comment.replies.map(reply => this.renderComment(reply))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            />
                         )}
                     </Spin>
                 </Card>

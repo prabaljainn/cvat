@@ -18,7 +18,6 @@ import {
     Spin,
     Empty,
     Tooltip,
-    Popconfirm,
 } from 'antd';
 import {
     CommentOutlined,
@@ -27,7 +26,6 @@ import {
     UserOutlined,
     ClockCircleOutlined,
     EditOutlined,
-    DeleteOutlined,
 } from '@ant-design/icons';
 import moment from 'moment';
 
@@ -134,7 +132,7 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
             console.log('Comments response:', response);
 
             // Get data from Axios response
-            const { data } = response;
+            const data = response.data;
             console.log('Comments data:', data);
 
             this.setState({
@@ -223,48 +221,6 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 description: 'Could not create comment. Please try again.',
             });
             this.setState({ submitting: false });
-        }
-    }
-
-    private async deleteComment(commentId: number): Promise<void> {
-        try {
-            const response = await core.server.request(
-                `/api/custom/comments/${commentId}/`,
-                {
-                    method: 'DELETE',
-                }
-            );
-
-            console.log('Delete response:', response);
-
-            notification.success({
-                message: 'Comment Deleted',
-                description: 'Comment has been deleted successfully.',
-            });
-
-            // Reload comments and stats
-            await this.loadComments();
-            await this.loadStats();
-        } catch (error: any) {
-            console.error('Error deleting comment:', error);
-
-            // Check if it's a permission error
-            if (error.response && error.response.status === 403) {
-                notification.error({
-                    message: 'Permission Denied',
-                    description: 'You can only delete your own comments.',
-                });
-            } else if (error.response && error.response.status === 404) {
-                notification.error({
-                    message: 'Comment Not Found',
-                    description: 'This comment may have already been deleted.',
-                });
-            } else {
-                notification.error({
-                    message: 'Failed to delete comment',
-                    description: 'Could not delete comment. Please try again.',
-                });
-            }
         }
     }
 
@@ -379,44 +335,24 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                     <Paragraph style={{ marginBottom: 8 }}>
                         {comment.message}
                     </Paragraph>
-                    <Space>
-                        {!comment.is_reply && (
-                            <Button
-                                type='link'
-                                size='small'
-                                icon={<CommentOutlined />}
-                                onClick={() => this.setState({
-                                    showCommentForm: true,
-                                    newComment: {
-                                        message: '',
-                                        type: 'GEN',
-                                        parentId: comment.id,
-                                    },
-                                })}
-                                style={{ padding: 0, height: 'auto' }}
-                            >
-                                Reply
-                            </Button>
-                        )}
-                        <Popconfirm
-                            title='Delete Comment'
-                            description='Are you sure you want to delete this comment?'
-                            onConfirm={() => this.deleteComment(comment.id)}
-                            okText='Yes'
-                            cancelText='No'
-                            placement='topRight'
+                    {!comment.is_reply && (
+                        <Button
+                            type='link'
+                            size='small'
+                            icon={<CommentOutlined />}
+                            onClick={() => this.setState({
+                                showCommentForm: true,
+                                newComment: {
+                                    message: '',
+                                    type: 'GEN',
+                                    parentId: comment.id,
+                                },
+                            })}
+                            style={{ padding: 0, height: 'auto' }}
                         >
-                            <Button
-                                type='link'
-                                size='small'
-                                icon={<DeleteOutlined />}
-                                danger
-                                style={{ padding: 0, height: 'auto' }}
-                            >
-                                Delete
-                            </Button>
-                        </Popconfirm>
-                    </Space>
+                            Reply
+                        </Button>
+                    )}
                 </div>
             </List.Item>
         );
