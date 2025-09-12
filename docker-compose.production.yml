@@ -16,16 +16,6 @@ services:
       CVAT_API_URL: "http://cvat_server:8080/api"
       CVAT_HOST: "${CVAT_HOST:-localhost}"
       DASHBOARD_HOST: "${DASHBOARD_HOST:-localhost}"
-      # Force HTTPS for external URLs
-      FORCE_HTTPS: "true"
-      # Ensure Angular uses HTTPS for all external requests
-      API_BASE_URL: "https://${DASHBOARD_HOST:-localhost}"
-      BASE_HREF: "/"
-      HTTPS_ONLY: "true"
-      # Force protocol detection
-      HTTPS: "true"
-      NODE_ENV: "production"
-      PROTOCOL: "https"
     labels:
       traefik.enable: "true"
       traefik.http.services.angular-dashboard.loadbalancer.server.port: "80"
@@ -42,7 +32,9 @@ services:
 
       # Security headers to prevent mixed content and enforce HTTPS
       traefik.http.middlewares.dashboard-security.headers.contentSecurityPolicy: "upgrade-insecure-requests; default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https: wss:; font-src 'self' https:; object-src 'none'; media-src 'self' https:; frame-src 'self' https:;"
-      traefik.http.middlewares.dashboard-security.headers.strictTransportSecurity: "max-age=31536000; includeSubDomains; preload"
+      traefik.http.middlewares.dashboard-security.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.dashboard-security.headers.stsIncludeSubdomains: "true"
+      traefik.http.middlewares.dashboard-security.headers.stsPreload: "true"
       traefik.http.middlewares.dashboard-security.headers.forceSTSHeader: "true"
       traefik.http.middlewares.dashboard-security.headers.referrerPolicy: "strict-origin-when-cross-origin"
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Proto: "https"
@@ -101,6 +93,20 @@ services:
       - cvat
     depends_on:
       - cvat_server
+    # Add resource limits to prevent OOM kills
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    # Add health check (simplified)
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # CVAT Server with Custom Analytics - Build your custom image
   cvat_server:
