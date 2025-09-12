@@ -273,6 +273,8 @@ class DetailsComponent extends React.PureComponent<Props, State> {
                                 />
                             </Col>
                         </Row>
+                        {!taskInstance.projectId && this.renderLabelsEditor()}
+                        {taskInstance.projectId && this.renderSubsetField()}
                         <Row>
                             <Col span={24}>
                                 <TaskCommentsComponent
@@ -281,8 +283,6 @@ class DetailsComponent extends React.PureComponent<Props, State> {
                                 />
                             </Col>
                         </Row>
-                        {!taskInstance.projectId && this.renderLabelsEditor()}
-                        {taskInstance.projectId && this.renderSubsetField()}
                     </Col>
                 </Row>
             </div>

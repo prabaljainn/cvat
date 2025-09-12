@@ -121,6 +121,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
         try {
             this.setState({ loading: true });
 
+            console.log(`Loading comments for task ${taskId}...`);
+
             const response = await core.server.request(
                 `/api/custom/tasks/${taskId}/comments/`,
                 {
@@ -128,7 +130,12 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 }
             );
 
+            console.log('Comments response:', response);
+
+            // Parse the response data
             const data = await response.json();
+            console.log('Comments data:', data);
+
             this.setState({
                 comments: data.results || [],
                 loading: false
@@ -155,6 +162,7 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 }
             );
 
+            // Parse the response data
             const stats = await response.json();
             this.setState({ stats });
 
@@ -185,7 +193,7 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 ...(newComment.parentId && { parent_comment: newComment.parentId })
             };
 
-            await core.server.request(
+            const response = await core.server.request(
                 '/api/custom/task-comments/create/',
                 {
                     method: 'POST',
