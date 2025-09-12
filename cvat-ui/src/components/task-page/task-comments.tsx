@@ -132,8 +132,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
 
             console.log('Comments response:', response);
 
-            // Parse the response data
-            const data = await response.json();
+            // Get data from Axios response
+            const data = response.data;
             console.log('Comments data:', data);
 
             this.setState({
@@ -162,8 +162,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                 }
             );
 
-            // Parse the response data
-            const stats = await response.json();
+            // Get data from Axios response
+            const stats = response.data;
             this.setState({ stats });
 
         } catch (error) {
@@ -200,6 +200,8 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
                     data: commentData
                 }
             );
+
+            console.log('Create comment response:', response);
 
             notification.success({
                 message: 'Comment Added',

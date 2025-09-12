@@ -25,6 +25,7 @@ import { CombinedState, CloudStorage } from 'reducers';
 import { updateTaskAsync, updateTaskMetadataAsync } from 'actions/tasks-actions';
 import TopBarComponent from './top-bar';
 import DetailsComponent from './details';
+import TaskCommentsComponent from './task-comments';
 import { getCloudStorageById } from './cloud-storage-editor';
 
 const core = getCore();
@@ -140,6 +141,10 @@ function TaskPageComponent(): JSX.Element {
                         onUpdateTaskMeta={onUpdateTaskMeta}
                     />
                     <JobListComponent task={taskInstance} onJobUpdate={onJobUpdate} />
+                    <TaskCommentsComponent
+                        taskId={taskInstance.id}
+                        taskName={taskInstance.name}
+                    />
                 </Col>
             </Row>
             <ModelRunnerModal />
