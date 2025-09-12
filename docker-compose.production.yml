@@ -49,6 +49,28 @@ services:
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Port: "443"
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Ssl: "on"
 
+      # ---- Router A: CVAT_HOST under /dashboard (fallback option) ----
+      traefik.http.routers.angular-dashboard.rule: >
+        Host(`${CVAT_HOST:-localhost}`) &&
+        (PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/en/`) ||
+         PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ar/`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ja/`))
+      traefik.http.routers.angular-dashboard.entrypoints: web
+      traefik.http.routers.angular-dashboard.middlewares: "dashboard-https-redirect"
+      traefik.http.routers.angular-dashboard.priority: "1100"
+
+      traefik.http.routers.angular-dashboard-https.rule: >
+        Host(`${CVAT_HOST:-localhost}`) &&
+        (PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/en/`) ||
+         PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ar/`) || PathPrefix(`${DASHBOARD_PREFIX:-/dashboard}/ja/`))
+      traefik.http.routers.angular-dashboard-https.entrypoints: websecure
+      traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
+      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors,dashboard-security,dashboard-strip-prefix"
+      traefik.http.routers.angular-dashboard-https.priority: "1100"
+
+      # Strip prefix middleware
+      traefik.http.middlewares.dashboard-strip-prefix.stripprefix.prefixes: "${DASHBOARD_PREFIX:-/dashboard}"
+
+      # ---- Router B: Dedicated DASHBOARD_HOST at site root ----
       # HTTP to HTTPS redirect for DASHBOARD_HOST
       traefik.http.routers.angular-dashboard-direct.rule: Host(`${DASHBOARD_HOST:-${CVAT_HOST:-localhost}}`)
       traefik.http.routers.angular-dashboard-direct.entrypoints: web
@@ -65,6 +87,14 @@ services:
       traefik.http.routers.angular-dashboard-direct-https.tls.certresolver: lets-encrypt
       traefik.http.routers.angular-dashboard-direct-https.middlewares: "dashboard-cors,dashboard-security"
       traefik.http.routers.angular-dashboard-direct-https.priority: "1000"
+
+      # Debug: Also match dashboard.sudocodes.com explicitly for troubleshooting
+      traefik.http.routers.angular-dashboard-debug.rule: Host(`dashboard.sudocodes.com`)
+      traefik.http.routers.angular-dashboard-debug.entrypoints: websecure
+      traefik.http.routers.angular-dashboard-debug.tls: "true"
+      traefik.http.routers.angular-dashboard-debug.tls.certresolver: lets-encrypt
+      traefik.http.routers.angular-dashboard-debug.middlewares: "dashboard-cors,dashboard-security"
+      traefik.http.routers.angular-dashboard-debug.priority: "999"
 
 
     networks:
