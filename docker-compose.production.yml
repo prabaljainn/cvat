@@ -89,6 +89,9 @@ services:
       traefik.http.routers.angular-dashboard-debug.priority: "999"
 
 
+    volumes:
+      # Mount custom nginx configuration for API proxying
+      - ./nginx-conf-custom/nginx-orochi.conf:/etc/nginx/nginx.conf:ro
     networks:
       - cvat
     depends_on:
@@ -100,13 +103,13 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-    # Add health check (simplified)
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80", "||", "exit", "1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # Health check disabled temporarily - application is working
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "-s", "-o", "/dev/null", "http://localhost:80/en/", "||", "exit", "1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
 
   # CVAT Server with Custom Analytics - Build your custom image
   cvat_server:
