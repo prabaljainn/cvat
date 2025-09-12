@@ -229,7 +229,7 @@ class TaskCommentsComponent extends React.PureComponent<Props, State> {
     private async deleteComment(commentId: number): Promise<void> {
         try {
             const response = await core.server.request(
-                `/api/custom/comments/${commentId}/`,
+                `/api/custom/comments/${commentId}`,
                 {
                     method: 'DELETE',
                 }
