@@ -52,8 +52,6 @@ urlpatterns = [
          name='task-verdict-update'),
 
     # Analytics and reporting endpoints
-    path('train-analytics/', views_analytics.TrainAnalyticsView.as_view(),
-         name='train-analytics'),
     path('tasks-paginated/', views_analytics.TasksPaginatedView.as_view(),
          name='tasks-paginated'),
     path('tasks-quick-stats/', views_analytics.TasksQuickStatsView.as_view(),

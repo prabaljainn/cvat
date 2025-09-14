@@ -8,6 +8,8 @@ Analytics and Reporting APIs for Train Metadata System
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.db.models import Q, Count, Case, When, IntegerField
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -25,124 +27,12 @@ class TaskAnalyticsPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class TrainAnalyticsView(APIView):
-    """
-    Analytics API for train metadata with time-based filtering.
-
-    GET /api/custom/train-analytics/?from_time=2025-01-01&to_time=2025-12-31
-
-    Returns:
-    - Total tasks count
-    - AC (Accepted) tasks count
-    - RJ (Rejected) tasks count
-    - NA (Not Applicable) tasks count
-    - Time-based filtering support
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        # Get query parameters
-        from_time = request.query_params.get('from_time')
-        to_time = request.query_params.get('to_time')
-        project_id = request.query_params.get('project_id')
-
-        # Build base queryset
-        tasks_queryset = Task.objects.all()
-
-        # Apply project filter if specified
-        if project_id:
-            try:
-                project_id = int(project_id)
-                tasks_queryset = tasks_queryset.filter(project_id=project_id)
-            except ValueError:
-                return Response(
-                    {'error': 'project_id must be an integer'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # Apply time filters if specified
-        if from_time:
-            try:
-                from_datetime = datetime.fromisoformat(from_time.replace('Z', '+00:00'))
-                tasks_queryset = tasks_queryset.filter(created_date__gte=from_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid from_time format. Use ISO format: 2025-01-01T00:00:00Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        if to_time:
-            try:
-                to_datetime = datetime.fromisoformat(to_time.replace('Z', '+00:00'))
-                tasks_queryset = tasks_queryset.filter(created_date__lte=to_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid to_time format. Use ISO format: 2025-12-31T23:59:59Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # Get total tasks count
-        total_tasks = tasks_queryset.count()
-
-        # Get train metadata statistics
-        # Create train metadata for tasks that don't have it
-        task_ids = list(tasks_queryset.values_list('id', flat=True))
-        existing_metadata_task_ids = set(
-            TaskTrainMetadata.objects.filter(task_id__in=task_ids).values_list('task_id', flat=True)
-        )
-
-        # Create missing metadata
-        tasks_without_metadata = tasks_queryset.exclude(id__in=existing_metadata_task_ids)
-        for task in tasks_without_metadata:
-            TaskTrainMetadata.get_or_create_for_task(task)
-
-        # Now get the counts with proper train metadata
-        metadata_queryset = TaskTrainMetadata.objects.filter(task__in=tasks_queryset)
-
-        # Count by verdict
-        verdict_counts = metadata_queryset.aggregate(
-            ac_count=Count(Case(When(verdict='AC', then=1), output_field=IntegerField())),
-            rj_count=Count(Case(When(verdict='RJ', then=1), output_field=IntegerField())),
-            na_count=Count(Case(When(verdict='NA', then=1), output_field=IntegerField()))
-        )
-
-        # Calculate percentages
-        ac_count = verdict_counts['ac_count'] or 0
-        rj_count = verdict_counts['rj_count'] or 0
-        na_count = verdict_counts['na_count'] or 0
-
-        # Build response
-        analytics = {
-            "summary": {
-                "total_tasks": total_tasks,
-                "ac_tasks": ac_count,
-                "rj_tasks": rj_count,
-                "na_tasks": na_count,  # "Not Applicable" tasks
-                "applicable_tasks": ac_count + rj_count  # Tasks with actual verdicts
-            },
-            "percentages": {
-                "ac_percentage": round((ac_count / total_tasks * 100) if total_tasks > 0 else 0, 2),
-                "rj_percentage": round((rj_count / total_tasks * 100) if total_tasks > 0 else 0, 2),
-                "na_percentage": round((na_count / total_tasks * 100) if total_tasks > 0 else 0, 2),
-                "applicable_percentage": round(((ac_count + rj_count) / total_tasks * 100) if total_tasks > 0 else 0, 2)
-            },
-            "filters_applied": {
-                "from_time": from_time,
-                "to_time": to_time,
-                "project_id": project_id
-            },
-            "generated_at": timezone.now().isoformat()
-        }
-
-        return Response(analytics)
-
-
+@method_decorator(cache_control(max_age=300), name='dispatch')  # 5-minute cache
 class TasksPaginatedView(APIView):
     """
-    Paginated API for tasks with train metadata and annotation statistics.
+    Unified API for tasks with analytics summary and paginated task details.
 
-    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1&from_time=2025-01-01T00:00:00Z&search=Task&train_id=TRAIN_001
+    GET /api/custom/tasks-paginated/?page=1&page_size=20&verdict=AC&project_id=1&from_time=2025-01-01T00:00:00Z&search=Task&train_id=TRAIN_001&include_analytics=true
 
     Query Parameters:
     - page: Page number (default: 1)
@@ -155,199 +45,335 @@ class TasksPaginatedView(APIView):
     - to_time/created_before: Tasks created before this datetime (ISO format)
     - updated_after: Tasks updated after this datetime (ISO format)
     - updated_before: Tasks updated before this datetime (ISO format)
+    - include_analytics: Include analytics summary in response (default: true)
 
-    Returns paginated list with:
-    - Train metadata (train_id, verdict, notes, confidence_score)
-    - Time data (created_date, updated_date)
-    - Status (verdict display)
-    - Annotation statistics (annotated frames / total frames)
+    Returns:
+    - Analytics summary (total counts, percentages by verdict) - if include_analytics=true
+    - Paginated task list with:
+      - Train metadata (train_id, verdict, notes, confidence_score)
+      - Time data (created_date, updated_date)
+      - Status (verdict display)
+      - Annotation statistics (annotated frames / total frames)
     """
 
     permission_classes = [IsAuthenticated]
     pagination_class = TaskAnalyticsPagination
 
     def get(self, request):
-        # Get query parameters
-        verdict_filter = request.query_params.get('verdict')
-        project_id_filter = request.query_params.get('project_id')
-        search = request.query_params.get('search')
-        from_time = request.query_params.get('from_time')
-        to_time = request.query_params.get('to_time')
-        created_after = request.query_params.get('created_after')
-        created_before = request.query_params.get('created_before')
-        updated_after = request.query_params.get('updated_after')
-        updated_before = request.query_params.get('updated_before')
+        """
+        Handle GET request for unified tasks and analytics API.
 
-        # Build base queryset with optimizations
-        queryset = Task.objects.select_related(
-            'project', 'owner', 'assignee', 'data'
-        ).prefetch_related(
-            'train_metadata'
-        ).all()
+        Returns:
+            Response: JSON response with paginated tasks and optional analytics summary
+        """
+        try:
+            # Get and validate query parameters
+            verdict_filter = request.query_params.get('verdict')
+            project_id_filter = request.query_params.get('project_id')
+            search = request.query_params.get('search', '').strip()
+            from_time = request.query_params.get('from_time')
+            to_time = request.query_params.get('to_time')
+            created_after = request.query_params.get('created_after')
+            created_before = request.query_params.get('created_before')
+            updated_after = request.query_params.get('updated_after')
+            updated_before = request.query_params.get('updated_before')
+            include_analytics = request.query_params.get('include_analytics', 'true').lower() == 'true'
 
-        # Apply filters
-        if project_id_filter:
-            try:
-                project_id_filter = int(project_id_filter)
-                queryset = queryset.filter(project_id=project_id_filter)
-            except ValueError:
+            # Validate search parameter length (prevent overly long searches)
+            if search and len(search) > 255:
                 return Response(
-                    {'error': 'project_id must be an integer'},
+                    {'error': 'Search query too long. Maximum 255 characters allowed.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # Enhanced search functionality with partial matching
-        train_id_search = request.query_params.get('train_id')
+            # Build base queryset with optimizations
+            queryset = Task.objects.select_related(
+                'project', 'owner', 'assignee', 'data'
+            ).prefetch_related(
+                'train_metadata'
+            ).all()
 
-        if search or train_id_search:
-            search_conditions = Q()
+            # Apply filters
+            if project_id_filter:
+                try:
+                    project_id_filter = int(project_id_filter)
+                    queryset = queryset.filter(project_id=project_id_filter)
+                except ValueError:
+                    return Response(
+                        {'error': 'project_id must be an integer'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            if search:
-                # Partial matching search across all fields (case-insensitive)
-                search_conditions |= (
-                    Q(name__icontains=search) |                           # Task name
-                    Q(train_metadata__train_id__icontains=search) |       # Train ID
-                    Q(owner__username__icontains=search) |                # Owner username
-                    Q(project__name__icontains=search) |                  # Project name
-                    Q(train_metadata__notes__icontains=search)            # Train notes
-                )
+            # Enhanced search functionality with partial matching
+            train_id_search = request.query_params.get('train_id')
 
-            if train_id_search:
-                # Specific train ID search with partial matching
-                search_conditions |= Q(train_metadata__train_id__icontains=train_id_search)
+            if search or train_id_search:
+                search_conditions = Q()
 
-            queryset = queryset.filter(search_conditions).distinct()
+                if search:
+                    # Partial matching search across all fields (case-insensitive)
+                    search_conditions |= (
+                        Q(name__icontains=search) |                           # Task name
+                        Q(train_metadata__train_id__icontains=search) |       # Train ID
+                        Q(owner__username__icontains=search) |                # Owner username
+                        Q(project__name__icontains=search) |                  # Project name
+                        Q(train_metadata__notes__icontains=search)            # Train notes
+                    )
 
-        # Apply datetime filters
-        if from_time or created_after:
-            try:
-                filter_time = from_time or created_after
-                from_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
-                queryset = queryset.filter(created_date__gte=from_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid from_time/created_after format. Use ISO format: 2025-01-01T00:00:00Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                if train_id_search:
+                    # Specific train ID search with partial matching
+                    search_conditions |= Q(train_metadata__train_id__icontains=train_id_search)
 
-        if to_time or created_before:
-            try:
-                filter_time = to_time or created_before
-                to_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
-                queryset = queryset.filter(created_date__lte=to_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid to_time/created_before format. Use ISO format: 2025-12-31T23:59:59Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                queryset = queryset.filter(search_conditions).distinct()
 
-        if updated_after:
-            try:
-                updated_datetime = datetime.fromisoformat(updated_after.replace('Z', '+00:00'))
-                queryset = queryset.filter(updated_date__gte=updated_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid updated_after format. Use ISO format: 2025-01-01T00:00:00Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Apply datetime filters
+            if from_time or created_after:
+                try:
+                    filter_time = from_time or created_after
+                    from_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
+                    queryset = queryset.filter(created_date__gte=from_datetime)
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid from_time/created_after format. Use ISO format: 2025-01-01T00:00:00Z'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-        if updated_before:
-            try:
-                updated_datetime = datetime.fromisoformat(updated_before.replace('Z', '+00:00'))
-                queryset = queryset.filter(updated_date__lte=updated_datetime)
-            except ValueError:
-                return Response(
-                    {'error': 'Invalid updated_before format. Use ISO format: 2025-12-31T23:59:59Z'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            if to_time or created_before:
+                try:
+                    filter_time = to_time or created_before
+                    to_datetime = datetime.fromisoformat(filter_time.replace('Z', '+00:00'))
+                    queryset = queryset.filter(created_date__lte=to_datetime)
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid to_time/created_before format. Use ISO format: 2025-12-31T23:59:59Z'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-        # Apply verdict filter (need to handle tasks without metadata)
-        if verdict_filter:
-            verdict_filter = verdict_filter.upper()
-            if verdict_filter not in ['AC', 'NA', 'RJ']:
-                return Response(
-                    {'error': 'Invalid verdict. Must be AC, NA, or RJ'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            if updated_after:
+                try:
+                    updated_datetime = datetime.fromisoformat(updated_after.replace('Z', '+00:00'))
+                    queryset = queryset.filter(updated_date__gte=updated_datetime)
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid updated_after format. Use ISO format: 2025-01-01T00:00:00Z'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            # Get tasks with the specified verdict
-            task_ids_with_verdict = TaskTrainMetadata.objects.filter(
-                verdict=verdict_filter
-            ).values_list('task_id', flat=True)
+            if updated_before:
+                try:
+                    updated_datetime = datetime.fromisoformat(updated_before.replace('Z', '+00:00'))
+                    queryset = queryset.filter(updated_date__lte=updated_datetime)
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid updated_before format. Use ISO format: 2025-12-31T23:59:59Z'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            if verdict_filter == 'NA':
-                # For NA, also include tasks without metadata
-                tasks_without_metadata = queryset.exclude(
-                    id__in=TaskTrainMetadata.objects.values_list('task_id', flat=True)
-                )
-                queryset = queryset.filter(
-                    Q(id__in=task_ids_with_verdict) | Q(id__in=tasks_without_metadata)
-                )
-            else:
-                queryset = queryset.filter(id__in=task_ids_with_verdict)
+            # Apply verdict filter (need to handle tasks without metadata)
+            if verdict_filter:
+                verdict_filter = verdict_filter.upper()
+                if verdict_filter not in ['AC', 'NA', 'RJ']:
+                    return Response(
+                        {'error': 'Invalid verdict. Must be AC, NA, or RJ'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-        # Apply pagination
-        paginator = self.pagination_class()
-        page = paginator.paginate_queryset(queryset, request)
+                # Get tasks with the specified verdict
+                task_ids_with_verdict = TaskTrainMetadata.objects.filter(
+                    verdict=verdict_filter
+                ).values_list('task_id', flat=True)
 
-        if page is not None:
-            # Build response data
-            tasks_data = []
-            for task in page:
-                # Get or create train metadata
-                train_metadata, created = TaskTrainMetadata.get_or_create_for_task(task)
+                if verdict_filter == 'NA':
+                    # For NA, also include tasks without metadata
+                    tasks_without_metadata = queryset.exclude(
+                        id__in=TaskTrainMetadata.objects.values_list('task_id', flat=True)
+                    )
+                    queryset = queryset.filter(
+                        Q(id__in=task_ids_with_verdict) | Q(id__in=tasks_without_metadata)
+                    )
+                else:
+                    queryset = queryset.filter(id__in=task_ids_with_verdict)
 
-                # Calculate annotation statistics
-                annotation_stats = self._get_annotation_stats(task)
+            # Calculate analytics if requested (before pagination to get accurate totals)
+            analytics_data = None
+            if include_analytics:
+                analytics_data = self._calculate_analytics(queryset, from_time, to_time, project_id_filter)
 
-                task_data = {
-                    "task_id": task.id,
-                    "task_name": task.name,
-                    "project_id": task.project.id if task.project else None,
-                    "project_name": task.project.name if task.project else None,
-                    "owner": task.owner.username if task.owner else None,
-                    "assignee": task.assignee.username if task.assignee else None,
-                    "status": task.status,
+            # Apply pagination
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(queryset, request)
 
-                    # Train metadata
-                    "train_metadata": {
-                        "train_id": train_metadata.train_id,
-                        "verdict": train_metadata.verdict,
-                        "verdict_display": train_metadata.verdict_display,
-                        "notes": train_metadata.notes,
-                        "confidence_score": train_metadata.confidence_score,
-                        "created_date": train_metadata.created_date.isoformat(),
-                        "updated_date": train_metadata.updated_date.isoformat()
-                    },
+            if page is not None:
+                # Build response data
+                tasks_data = []
+                for task in page:
+                    # Get or create train metadata
+                    train_metadata, created = TaskTrainMetadata.get_or_create_for_task(task)
 
-                    # Time data
-                    "time_data": {
-                        "task_created": task.created_date.isoformat() if task.created_date else None,
-                        "task_updated": task.updated_date.isoformat() if task.updated_date else None,
-                        "metadata_created": train_metadata.created_date.isoformat(),
-                        "metadata_updated": train_metadata.updated_date.isoformat()
-                    },
+                    # Calculate annotation statistics
+                    annotation_stats = self._get_annotation_stats(task)
 
-                    # Annotation statistics
-                    "annotation_stats": annotation_stats,
+                    task_data = {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "project_id": task.project.id if task.project else None,
+                        "project_name": task.project.name if task.project else None,
+                        "owner": task.owner.username if task.owner else None,
+                        "assignee": task.assignee.username if task.assignee else None,
+                        "status": task.status,
 
-                    # Task data info
-                    "task_info": {
-                        "total_frames": task.data.size if task.data else 0,
-                        "start_frame": task.data.start_frame if task.data else 0,
-                        "stop_frame": task.data.stop_frame if task.data else 0,
-                        "chunk_size": task.data.chunk_size if task.data else 0,
-                        "image_quality": task.data.image_quality if task.data else 0
+                        # Train metadata
+                        "train_metadata": {
+                            "train_id": train_metadata.train_id,
+                            "verdict": train_metadata.verdict,
+                            "verdict_display": train_metadata.verdict_display,
+                            "notes": train_metadata.notes,
+                            "confidence_score": train_metadata.confidence_score,
+                            "created_date": train_metadata.created_date.isoformat(),
+                            "updated_date": train_metadata.updated_date.isoformat()
+                        },
+
+                        # Time data
+                        "time_data": {
+                            "task_created": task.created_date.isoformat() if task.created_date else None,
+                            "task_updated": task.updated_date.isoformat() if task.updated_date else None,
+                            "metadata_created": train_metadata.created_date.isoformat(),
+                            "metadata_updated": train_metadata.updated_date.isoformat()
+                        },
+
+                        # Annotation statistics
+                        "annotation_stats": annotation_stats,
+
+                        # Task data info
+                        "task_info": {
+                            "total_frames": task.data.size if task.data else 0,
+                            "start_frame": task.data.start_frame if task.data else 0,
+                            "stop_frame": task.data.stop_frame if task.data else 0,
+                            "chunk_size": task.data.chunk_size if task.data else 0,
+                            "image_quality": task.data.image_quality if task.data else 0
+                        }
                     }
-                }
 
-                tasks_data.append(task_data)
+                    tasks_data.append(task_data)
 
-            # Return paginated response
-            return paginator.get_paginated_response(tasks_data)
+                # Build paginated response with optional analytics
+                response_data = tasks_data
+                paginated_response = paginator.get_paginated_response(response_data)
 
-        # Fallback if pagination fails
-        return Response({"results": [], "count": 0})
+                # Add analytics to response if requested
+                if include_analytics and analytics_data:
+                    paginated_response.data['analytics'] = analytics_data
+
+                return paginated_response
+
+            # Fallback if pagination fails
+            fallback_response = {"results": [], "count": 0}
+            if include_analytics and analytics_data:
+                fallback_response['analytics'] = analytics_data
+            return Response(fallback_response)
+
+        except Exception as e:
+            # Log the error (in production, use proper logging)
+            # logger.error(f"Error in TasksPaginatedView: {str(e)}")
+            return Response(
+                {
+                    'error': 'An internal error occurred while processing your request.',
+                    'details': str(e) if request.user.is_staff else None  # Only show details to staff
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _calculate_analytics(self, queryset, from_time, to_time, project_id):
+        """
+        Calculate analytics summary for the filtered queryset.
+        Optimized for performance with bulk operations and minimal database queries.
+        """
+        # Get total tasks count from the filtered queryset (single query)
+        total_tasks = queryset.count()
+
+        if total_tasks == 0:
+            return self._empty_analytics_response(from_time, to_time, project_id)
+
+        # Get task IDs efficiently (single query)
+        task_ids = list(queryset.values_list('id', flat=True))
+
+        # Bulk create missing metadata (optimized approach)
+        existing_metadata_task_ids = set(
+            TaskTrainMetadata.objects.filter(task_id__in=task_ids).values_list('task_id', flat=True)
+        )
+
+        # Bulk create missing metadata for better performance
+        missing_task_ids = set(task_ids) - existing_metadata_task_ids
+        if missing_task_ids:
+            missing_tasks = queryset.filter(id__in=missing_task_ids)
+            metadata_to_create = []
+            for task in missing_tasks:
+                metadata_to_create.append(TaskTrainMetadata(task=task))
+
+            # Bulk create for better performance
+            if metadata_to_create:
+                TaskTrainMetadata.objects.bulk_create(metadata_to_create, ignore_conflicts=True)
+
+        # Single optimized query to get all verdict counts
+        verdict_counts = TaskTrainMetadata.objects.filter(
+            task_id__in=task_ids
+        ).aggregate(
+            ac_count=Count(Case(When(verdict='AC', then=1), output_field=IntegerField())),
+            rj_count=Count(Case(When(verdict='RJ', then=1), output_field=IntegerField())),
+            na_count=Count(Case(When(verdict='NA', then=1), output_field=IntegerField()))
+        )
+
+        # Extract counts with safe defaults
+        ac_count = verdict_counts['ac_count'] or 0
+        rj_count = verdict_counts['rj_count'] or 0
+        na_count = verdict_counts['na_count'] or 0
+
+        # Build optimized analytics response
+        return {
+            "summary": {
+                "total_tasks": total_tasks,
+                "ac_tasks": ac_count,
+                "rj_tasks": rj_count,
+                "na_tasks": na_count,
+                "applicable_tasks": ac_count + rj_count
+            },
+            "percentages": {
+                "ac_percentage": round((ac_count / total_tasks * 100), 2),
+                "rj_percentage": round((rj_count / total_tasks * 100), 2),
+                "na_percentage": round((na_count / total_tasks * 100), 2),
+                "applicable_percentage": round(((ac_count + rj_count) / total_tasks * 100), 2)
+            },
+            "filters_applied": {
+                "from_time": from_time,
+                "to_time": to_time,
+                "project_id": project_id
+            },
+            "generated_at": timezone.now().isoformat()
+        }
+
+    def _empty_analytics_response(self, from_time, to_time, project_id):
+        """Return empty analytics response when no tasks found."""
+        return {
+            "summary": {
+                "total_tasks": 0,
+                "ac_tasks": 0,
+                "rj_tasks": 0,
+                "na_tasks": 0,
+                "applicable_tasks": 0
+            },
+            "percentages": {
+                "ac_percentage": 0.0,
+                "rj_percentage": 0.0,
+                "na_percentage": 0.0,
+                "applicable_percentage": 0.0
+            },
+            "filters_applied": {
+                "from_time": from_time,
+                "to_time": to_time,
+                "project_id": project_id
+            },
+            "generated_at": timezone.now().isoformat()
+        }
 
     def _get_annotation_stats(self, task):
         """Calculate annotation statistics for a task."""
