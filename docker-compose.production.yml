@@ -8,14 +8,13 @@ services:
   # Angular Dashboard Integration
   angular_dashboard:
     container_name: angular_dashboard
-    image: ghcr.io/prabaljainn/orochi-ui:latest
+    image: ghcr.io/prabaljainn/orochi-ui:staging
     restart: always
     environment:
       BOX: 'false'
       # Connect to CVAT API through internal network
       CVAT_API_URL: "http://cvat_server:8080/api"
       CVAT_HOST: "${CVAT_HOST:-localhost}"
-      DASHBOARD_HOST: "${DASHBOARD_HOST:-localhost}"
     labels:
       traefik.enable: "true"
       traefik.http.services.angular-dashboard.loadbalancer.server.port: "80"
@@ -26,7 +25,7 @@ services:
       traefik.http.middlewares.dashboard-cors.headers.accessControlAllowHeaders: "Content-Type,Authorization,X-CSRFToken,X-Requested-With,Cookie"
       traefik.http.middlewares.dashboard-cors.headers.accessControlAllowCredentials: "true"
       traefik.http.middlewares.dashboard-cors.headers.accessControlMaxAge: "86400"
-      traefik.http.middlewares.dashboard-cors.headers.accessControlAllowOriginList: "https://${CVAT_HOST:-localhost},https://${DASHBOARD_HOST:-${CVAT_HOST:-localhost}}"
+      traefik.http.middlewares.dashboard-cors.headers.accessControlAllowOriginList: "https://${CVAT_HOST:-localhost}"
 
       # Security headers to prevent mixed content and enforce HTTPS
       traefik.http.middlewares.dashboard-security.headers.contentSecurityPolicy: "upgrade-insecure-requests; default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https: wss:; font-src 'self' https:; object-src 'none'; media-src 'self' https:; frame-src 'self' https:;"
@@ -39,32 +38,24 @@ services:
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Port: "443"
       traefik.http.middlewares.dashboard-security.headers.customRequestHeaders.X-Forwarded-Ssl: "on"
 
+      # Path-based routing for dashboard under CVAT_HOST
+      # HTTP to HTTPS redirect for dashboard paths (excludes API paths for CVAT server)
+      traefik.http.routers.angular-dashboard-http.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || (PathPrefix(`/en`) && !PathPrefix(`/api/`)) || (PathPrefix(`/ja`) && !PathPrefix(`/api/`)) || (PathPrefix(`/hi`) && !PathPrefix(`/api/`)) || (PathPrefix(`/ar`) && !PathPrefix(`/api/`)) || (PathPrefix(`/es`) && !PathPrefix(`/api/`)) || (PathPrefix(`/te`) && !PathPrefix(`/api/`)))
+      traefik.http.routers.angular-dashboard-http.entrypoints: web
+      traefik.http.routers.angular-dashboard-http.middlewares: "dashboard-https-redirect"
+      traefik.http.routers.angular-dashboard-http.priority: "2000"
 
-      # ---- Router B: Dedicated DASHBOARD_HOST at site root ----
-      # HTTP to HTTPS redirect for DASHBOARD_HOST
-      traefik.http.routers.angular-dashboard-direct.rule: Host(`${DASHBOARD_HOST:-${CVAT_HOST:-localhost}}`)
-      traefik.http.routers.angular-dashboard-direct.entrypoints: web
-      traefik.http.routers.angular-dashboard-direct.middlewares: "dashboard-https-redirect"
-      traefik.http.routers.angular-dashboard-direct.priority: "1000"
-
-      # HTTPS redirect middleware for DASHBOARD_HOST
+      # HTTPS redirect middleware
       traefik.http.middlewares.dashboard-https-redirect.redirectscheme.scheme: "https"
       traefik.http.middlewares.dashboard-https-redirect.redirectscheme.permanent: "true"
 
-      traefik.http.routers.angular-dashboard-direct-https.rule: Host(`${DASHBOARD_HOST:-${CVAT_HOST:-localhost}}`)
-      traefik.http.routers.angular-dashboard-direct-https.entrypoints: websecure
-      traefik.http.routers.angular-dashboard-direct-https.tls: "true"
-      traefik.http.routers.angular-dashboard-direct-https.tls.certresolver: lets-encrypt
-      traefik.http.routers.angular-dashboard-direct-https.middlewares: "dashboard-cors,dashboard-security"
-      traefik.http.routers.angular-dashboard-direct-https.priority: "1000"
-
-      # Debug: Also match dashboard.sudocodes.com explicitly for troubleshooting
-      traefik.http.routers.angular-dashboard-debug.rule: Host(`dashboard.sudocodes.com`)
-      traefik.http.routers.angular-dashboard-debug.entrypoints: websecure
-      traefik.http.routers.angular-dashboard-debug.tls: "true"
-      traefik.http.routers.angular-dashboard-debug.tls.certresolver: lets-encrypt
-      traefik.http.routers.angular-dashboard-debug.middlewares: "dashboard-cors,dashboard-security"
-      traefik.http.routers.angular-dashboard-debug.priority: "999"
+      # HTTPS routes for dashboard paths (excludes API paths for CVAT server)
+      traefik.http.routers.angular-dashboard-https.rule: Host(`${CVAT_HOST:-localhost}`) && (PathPrefix(`/dashboard`) || (PathPrefix(`/en`) && !PathPrefix(`/api/`)) || (PathPrefix(`/ja`) && !PathPrefix(`/api/`)) || (PathPrefix(`/hi`) && !PathPrefix(`/api/`)) || (PathPrefix(`/ar`) && !PathPrefix(`/api/`)) || (PathPrefix(`/es`) && !PathPrefix(`/api/`)) || (PathPrefix(`/te`) && !PathPrefix(`/api/`)))
+      traefik.http.routers.angular-dashboard-https.entrypoints: websecure
+      traefik.http.routers.angular-dashboard-https.tls: "true"
+      traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
+      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors,dashboard-security"
+      traefik.http.routers.angular-dashboard-https.priority: "2000"
 
 
     volumes:
@@ -108,14 +99,10 @@ services:
         http://${CVAT_HOST:-localhost},
         https://${CVAT_HOST:-localhost},
         http://*.${CVAT_HOST:-localhost},
-        https://*.${CVAT_HOST:-localhost},
-        http://${DASHBOARD_HOST:-localhost},
-        https://${DASHBOARD_HOST:-localhost},
-        http://*.${DASHBOARD_HOST:-localhost},
-        https://*.${DASHBOARD_HOST:-localhost}
+        https://*.${CVAT_HOST:-localhost}
       CORS_ALLOW_CREDENTIALS: "true"
       # CSRF settings for dashboard
-      CSRF_TRUSTED_ORIGINS: "https://${CVAT_HOST:-localhost},http://${CVAT_HOST:-localhost},https://${DASHBOARD_HOST:-localhost},http://${DASHBOARD_HOST:-localhost}"
+      CSRF_TRUSTED_ORIGINS: "https://${CVAT_HOST:-localhost},http://${CVAT_HOST:-localhost}"
       CSRF_COOKIE_SAMESITE: "Lax"
       CSRF_COOKIE_HTTPONLY: "False"
       SESSION_COOKIE_SAMESITE: "Lax"
