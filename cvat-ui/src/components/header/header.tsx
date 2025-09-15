@@ -512,6 +512,19 @@ function HeaderComponent(props: Props): JSX.Element {
                         Analytics
                     </Button>
                 ) : null}
+                {user.hasAnalyticsAccess ? (
+                    <Button
+                        className={getButtonClassName('dashboard', false)}
+                        type='link'
+                        href='/dashboard'
+                        onClick={(event: React.MouseEvent): void => {
+                            event.preventDefault();
+                            window.open('/dashboard', '_blank');
+                        }}
+                    >
+                        Dashboard
+                    </Button>
+                ) : null}
             </div>
             <div className='cvat-right-header'>
                 <CVATTooltip overlay='Click to open repository'>
