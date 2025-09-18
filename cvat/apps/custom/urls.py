@@ -11,6 +11,7 @@ from . import views_train_metadata
 from . import views_task_extension
 from . import views_analytics
 from . import views_task_comments
+from . import views_frame_data
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -54,6 +55,8 @@ urlpatterns = [
     # Analytics and reporting endpoints
     path('tasks-paginated/', views_analytics.TasksPaginatedView.as_view(),
          name='tasks-paginated'),
+    path('tasks-summary/', views_analytics.TasksSummaryView.as_view(),
+         name='tasks-summary'),
     path('tasks-quick-stats/', views_analytics.TasksQuickStatsView.as_view(),
          name='tasks-quick-stats'),
 
@@ -66,6 +69,10 @@ urlpatterns = [
          name='task-comments-list'),
     path('tasks/<int:task_id>/comments/create/', views_task_comments.TaskCommentCreateView.as_view(),
          name='task-comments-create'),
+
+    # Per-frame data endpoints
+    path('jobs/<int:job_id>/frame/<int:frame_number>/', views_frame_data.JobFrameView.as_view(),
+         name='job-frame-data'),
 ]
 
 # Add the router URLs
