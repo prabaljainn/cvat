@@ -28,7 +28,7 @@ services:
       traefik.http.middlewares.dashboard-cors.headers.accessControlAllowOriginList: "https://${CVAT_HOST:-localhost}"
 
       # Security headers to prevent mixed content and enforce HTTPS
-      traefik.http.middlewares.dashboard-security.headers.contentSecurityPolicy: "upgrade-insecure-requests; default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https: wss:; font-src 'self' https:; object-src 'none'; media-src 'self' https:; frame-src 'self' https:;"
+      traefik.http.middlewares.dashboard-security.headers.contentSecurityPolicy: "upgrade-insecure-requests; default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: blob:; connect-src 'self' https: wss:; font-src 'self' https:; object-src 'none'; media-src 'self' https:; frame-src 'self' https:;"
       traefik.http.middlewares.dashboard-security.headers.stsSeconds: "31536000"
       traefik.http.middlewares.dashboard-security.headers.stsIncludeSubdomains: "true"
       traefik.http.middlewares.dashboard-security.headers.stsPreload: "true"
