@@ -1,5 +1,3 @@
-<!--lint disable maximum-heading-length-->
-
 ---
 
 title: 'Installation Guide'
@@ -8,8 +6,6 @@ weight: 1
 description: 'A CVAT installation guide for different operating systems.'
 
 ---
-
-<!--lint disable heading-style-->
 
 # Quick installation guide
 
@@ -126,8 +122,8 @@ For access from China, read [sources for users from China](#sources-for-users-fr
 
 - Open the installed Google Chrome browser and go to [localhost:8080](http://localhost:8080).
   Type your login/password for the superuser on the login page and press the _Login_
-  button. Now you should be able to create a new annotation task. Please read the
-  {{< ilink "/docs/manual" "CVAT manual" >}} for more details.
+  button. Now you should be able to create a new annotation task. Please refer to the
+  {{< ilink "/docs/workspace/tasks-page#create-annotation-task" "Annotation" >}} section for more details.
 
 ## Windows 10
 
@@ -209,8 +205,8 @@ For access from China, read [sources for users from China](#sources-for-users-fr
 
 - Open the installed Google Chrome browser and go to [localhost:8080](http://localhost:8080).
   Type your login/password for the superuser on the login page and press the _Login_
-  button. Now you should be able to create a new annotation task. Please read the
-  {{< ilink "/docs/manual" "CVAT manual" >}} for more details.
+  button. Now you should be able to create a new annotation task. Please refer to the
+  {{< ilink "/docs/annotation" "Annotation" >}} section for more details.
 
 ## Mac OS Mojave
 
@@ -285,8 +281,8 @@ For access from China, read [sources for users from China](#sources-for-users-fr
 
 - Open the installed Google Chrome browser and go to [localhost:8080](http://localhost:8080).
   Type your login/password for the superuser on the login page and press the _Login_
-  button. Now you should be able to create a new annotation task. Please read the
-  {{< ilink "/docs/manual" "CVAT manual" >}} for more details.
+  button. Now you should be able to create a new annotation task. Please refer to the
+  {{< ilink "/docs/annotation" "Annotation" >}} section for more details.
 
 ## Advanced Topics
 
@@ -377,6 +373,12 @@ MigrationsHealthCheck    ... working
 OPAHealthCheck           ... working
 ```
 
+Configuring Disk Usage Health Check
+
+- `CVAT_HEALTH_DISK_USAGE_MAX`: This environment variable specifies the maximum allowed disk usage percentage
+  for the volume where CVAT is installed.
+  If the disk usage exceeds this threshold, the DiskUsage health check will fail.
+  The value should be an integer representing a percentage (e.g., 90 for 90%). Read more about how to enable [health checks](#cvat-health-check-failed-because-of-too-low-free-disk-space).
 ### Deploying CVAT behind a proxy
 
 If you deploy CVAT behind a proxy and do not plan to use any of [serverless functions](#semi-automatic-and-automatic-annotation)
@@ -719,4 +721,30 @@ and restart docker:
 
 ```shell
 docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+```
+
+### CVAT health check failed because of too low free disk space
+
+During CVAT startup, it is possible to get an error like this:
+
+```
+health_check.exceptions.ServiceWarning: warning: <server name> 94.8% disk usage exceeds 90%
+```
+
+This error means that there is not enough free disk space on the CVAT data storage volume.
+
+By default, CVAT requires at least 10% free disk space. If you want to change the default value,
+it is possible to configure the required amount of free space used in such checks.
+
+Set the environment variable:
+
+```shell
+export CVAT_HEALTH_DISK_USAGE_MAX=90
+```
+
+and add an extra environment variable to the `docker-compose.yml` file:
+
+```yaml
+x-backend-env: &backend-env
+  CVAT_HEALTH_DISK_USAGE_MAX: '${CVAT_HEALTH_DISK_USAGE_MAX:-90}'
 ```

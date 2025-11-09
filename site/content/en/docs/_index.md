@@ -1,22 +1,12 @@
 ---
-title: 'Documentation'
-linkTitle: 'Documentation'
-description: 'Welcome to the documentation of Computer Vision Annotation Tool.'
+title: 'CVAT Documentation'
+linkTitle: 'Docs'
+description: 'Everything you need to know about CVAT, from basic data annotation tips to advanced and AI-assisted labeling guides.'
 no_list: true
 menu:
   main:
     weight: 20
 ---
-
-CVAT is a free, online, interactive video and image annotation tool for computer vision.
-It is being developed and used by CVAT.ai to annotate millions of objects with different properties.
-Many UI and UX decisions are based on feedbacks from professional data annotation team.
-Try it online [app.cvat.ai](https://app.cvat.ai).
-
-Our documentation provides information for annotators, AI researchers, system administrators,
-and developers.
-The documentation is divided into three sections, and each section is divided into
-subsections `basic` and `advanced`.
 
 <section id="docs">
 
@@ -36,12 +26,9 @@ Answers to frequently asked questions.
 
 {{% blocks/feature icon="fab fa-github" title="[GitHub Repository](https://github.com/cvat-ai/cvat)" %}}
 
-Computer Vision Annotation Tool GitHub repository.
+CVAT GitHub repository.
 
 {{% /blocks/feature %}}
-
-
-<!--lint disable maximum-line-length-->
 
 {{% blocks/feature icon="fa-book" title="[Manual](manual/)" %}}
 

@@ -5,8 +5,6 @@ weight: 60
 description: 'Instructions for upgrading CVAT deployed with docker compose'
 ---
 
-<!--lint disable heading-style-->
-
 ## Upgrade guide
 
 Note: updating CVAT from version 2.2.0 to version 2.3.0 requires additional manual actions with database data due to
@@ -55,6 +53,13 @@ To upgrade CVAT, follow these steps:
   ```shell
   docker logs cvat_server -f
   ```
+
+## How to upgrade CVAT from v2.46.0 to v2.47.0.
+
+In version 2.47.0, CVAT upgraded the FFmpeg library it uses to split videos into frames from 4.3.1 to 8.0.
+There is a small chance that some video files may not be processed differently by the new FFmpeg version.
+
+If one of your tasks is affected, follow the guide in ./utils/ffmpeg_compatibility/README.md
 
 ## Upgrade CVAT after v2.26.0
 

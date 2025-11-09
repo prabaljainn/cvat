@@ -53,5 +53,8 @@ if apps.is_installed("health_check"):
 if apps.is_installed("cvat.apps.consensus"):
     urlpatterns.append(path("api/", include("cvat.apps.consensus.urls")))
 
+if apps.is_installed("cvat.apps.access_tokens"):
+    urlpatterns.append(path("api/", include("cvat.apps.access_tokens.urls")))
+
 if apps.is_installed("cvat.apps.custom"):
     urlpatterns.append(path("api/custom/", include("cvat.apps.custom.urls")))

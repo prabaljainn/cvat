@@ -37,8 +37,8 @@ FROM build-image-base AS build-image-av
 ARG PREFIX=/opt/ffmpeg
 ARG PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
 
-ENV FFMPEG_VERSION=4.3.1 \
-    OPENH264_VERSION=2.1.1
+ENV FFMPEG_VERSION=8.0 \
+    OPENH264_VERSION=2.6.0
 
 WORKDIR /tmp/openh264
 RUN curl -sL https://github.com/cisco/openh264/archive/v${OPENH264_VERSION}.tar.gz --output - | \
@@ -61,11 +61,8 @@ COPY utils/dataset_manifest/requirements.txt /tmp/utils/dataset_manifest/require
 RUN grep -q '^av==' /tmp/utils/dataset_manifest/requirements.txt
 RUN sed -i '/^av==/!d' /tmp/utils/dataset_manifest/requirements.txt
 
-# Work around https://github.com/PyAV-Org/PyAV/issues/1140
-RUN pip install setuptools wheel 'cython<3'
-
 RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
-    python3 -m pip wheel --no-binary=av --no-build-isolation \
+    python3 -m pip wheel --no-binary=av \
     -r /tmp/utils/dataset_manifest/requirements.txt \
     -w /tmp/wheelhouse
 
@@ -85,7 +82,7 @@ RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
     -r /tmp/cvat/requirements/${CVAT_CONFIGURATION}.txt \
     -w /tmp/wheelhouse
 
-FROM golang:1.24.4 AS build-smokescreen
+FROM golang:1.25.3 AS build-smokescreen
 
 RUN git clone --filter=blob:none --no-checkout https://github.com/stripe/smokescreen.git
 RUN cd smokescreen && git checkout eb1ac09 && go build -o /tmp/smokescreen
@@ -138,8 +135,7 @@ RUN apt-get update && \
         wait-for-it \
     && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime && \
     dpkg-reconfigure -f noninteractive tzdata && \
-    rm -rf /var/lib/apt/lists/* && \
-    echo 'application/wasm wasm' >> /etc/mime.types
+    rm -rf /var/lib/apt/lists/*
 
 # Install smokescreen
 COPY --from=build-smokescreen /tmp/smokescreen /usr/local/bin/smokescreen
@@ -197,6 +193,7 @@ COPY --chown=${USER} backend_entrypoint.d/ ${HOME}/backend_entrypoint.d
 COPY --chown=${USER} manage.py rqscheduler.py backend_entrypoint.sh wait_for_deps.sh ${HOME}/
 COPY --chown=${USER} utils/ ${HOME}/utils
 COPY --chown=${USER} cvat/ ${HOME}/cvat
+COPY --chown=${USER} components/analytics/clickhouse/init.py ${HOME}/components/analytics/clickhouse/init.py
 
 ARG COVERAGE_PROCESS_START
 RUN if [ "${COVERAGE_PROCESS_START}" ]; then \
