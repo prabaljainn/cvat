@@ -24,6 +24,7 @@ class TaskTrainMetadataSerializer(serializers.ModelSerializer):
             'verdict_display',
             'notes',
             'confidence_score',
+            'server_files_path',
             'created_date',
             'updated_date'
         ]
@@ -77,6 +78,13 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
         max_value=1.0,
         help_text="Optional confidence score for the verdict (0.0 to 1.0)"
     )
+    server_files_path = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=1024,
+        help_text="S3 prefix or server files path used for this task's data source"
+    )
 
     class Meta:
         model = Task
@@ -93,6 +101,7 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
                 self.fields['verdict'].initial = train_metadata.verdict
                 self.fields['train_notes'].initial = train_metadata.notes
                 self.fields['confidence_score'].initial = train_metadata.confidence_score
+                self.fields['server_files_path'].initial = train_metadata.server_files_path
             except TaskTrainMetadata.DoesNotExist:
                 # No train metadata exists yet, use defaults
                 pass
@@ -130,6 +139,7 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
             'verdict': validated_data.pop('verdict', None),
             'notes': validated_data.pop('train_notes', None),
             'confidence_score': validated_data.pop('confidence_score', None),
+            'server_files_path': validated_data.pop('server_files_path', None),
         }
 
     def _create_or_update_train_metadata(self, task, train_data):
@@ -150,6 +160,9 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
         if train_data['confidence_score'] is not None:
             train_metadata.confidence_score = train_data['confidence_score']
 
+        if train_data['server_files_path'] is not None:
+            train_metadata.server_files_path = train_data['server_files_path']
+
         train_metadata.save()
         return train_metadata
 
@@ -168,6 +181,7 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
             data['verdict_display'] = train_metadata.verdict_display
             data['train_notes'] = train_metadata.notes
             data['confidence_score'] = train_metadata.confidence_score
+            data['server_files_path'] = train_metadata.server_files_path
 
         except Exception:
             # Fallback if train metadata can't be accessed
@@ -177,6 +191,7 @@ class TaskWithTrainMetadataSerializer(serializers.ModelSerializer):
             data['verdict_display'] = 'Not Applicable'
             data['train_notes'] = None
             data['confidence_score'] = None
+            data['server_files_path'] = None
 
         return data
 

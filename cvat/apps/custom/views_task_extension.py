@@ -192,6 +192,7 @@ class TaskTrainMetadataAPIView(APIView):
             'verdict_display': train_metadata.verdict_display,
             'notes': train_metadata.notes,
             'confidence_score': train_metadata.confidence_score,
+            'server_files_path': train_metadata.server_files_path,
             'created_date': train_metadata.created_date.isoformat(),
             'updated_date': train_metadata.updated_date.isoformat(),
             'is_new': created
@@ -239,6 +240,10 @@ class TaskTrainMetadataAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        if 'server_files_path' in request.data:
+            train_metadata.server_files_path = request.data['server_files_path']
+            updated_fields.append('server_files_path')
+
         train_metadata.save()
 
         return Response({
@@ -251,6 +256,7 @@ class TaskTrainMetadataAPIView(APIView):
             'verdict_display': train_metadata.verdict_display,
             'notes': train_metadata.notes,
             'confidence_score': train_metadata.confidence_score,
+            'server_files_path': train_metadata.server_files_path,
             'updated_date': train_metadata.updated_date.isoformat()
         })
 

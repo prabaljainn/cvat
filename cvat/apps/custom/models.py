@@ -62,6 +62,14 @@ class TaskTrainMetadata(models.Model):
         help_text="Optional confidence score for the verdict (0.0 to 1.0)"
     )
 
+    # S3/Cloud storage prefix path
+    server_files_path = models.CharField(
+        max_length=1024,
+        blank=True,
+        null=True,
+        help_text="S3 prefix or server files path used for this task's data source"
+    )
+
     class Meta:
         verbose_name = "Task Train Metadata"
         verbose_name_plural = "Task Train Metadata"

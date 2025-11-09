@@ -12,6 +12,7 @@ from . import views_task_extension
 from . import views_analytics
 from . import views_task_comments
 from . import views_frame_data
+from . import views_s3_videos
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -73,6 +74,14 @@ urlpatterns = [
     # Per-frame data endpoints
     path('jobs/<int:job_id>/frame/<int:frame_number>/', views_frame_data.JobFrameView.as_view(),
          name='job-frame-data'),
+
+    # S3 Videos with presigned URLs
+    path('tasks/<int:task_id>/videos/', views_s3_videos.TaskVideosView.as_view(),
+         name='task-videos'),
+    path('tasks/<int:task_id>/videos/check/', views_s3_videos.TaskVideosQuickView.as_view(),
+         name='task-videos-check'),
+    path('tasks/<int:task_id>/videos/<path:video_path>/', views_s3_videos.TaskSingleVideoView.as_view(),
+         name='task-single-video'),
 ]
 
 # Add the router URLs

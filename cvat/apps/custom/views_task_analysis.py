@@ -19,6 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from cvat.apps.engine.models import Task, Job, Label, LabeledShape, LabeledImage, LabeledTrack, TrackedShape
 from .models import TaskTrainMetadata
+from .s3_utils import create_s3_generator_from_env
 
 
 class TaskAnalysisView(APIView):
@@ -38,6 +39,7 @@ class TaskAnalysisView(APIView):
     def get(self, request):
         # Get query parameters
         task_id = request.query_params.get('task_id')
+        video_expiration = int(request.query_params.get('video_expiration', 36000))
 
         if not task_id:
             return Response(
@@ -55,7 +57,7 @@ class TaskAnalysisView(APIView):
 
         # Get the task with related data
         try:
-            task = Task.objects.select_related('project', 'owner', 'assignee').get(id=task_id)
+            task = Task.objects.select_related('project', 'owner', 'assignee', 'data').get(id=task_id)
         except Task.DoesNotExist:
             raise Http404("Task not found")
 
@@ -67,11 +69,11 @@ class TaskAnalysisView(APIView):
             )
 
         # Build comprehensive task analysis
-        analysis = self._build_task_analysis(task)
+        analysis = self._build_task_analysis(task, video_expiration)
 
         return Response(analysis)
 
-    def _build_task_analysis(self, task: Task) -> Dict:
+    def _build_task_analysis(self, task: Task, video_expiration: int = 3600) -> Dict:
         """Build comprehensive task analysis data."""
 
         # 1. Basic task information (similar to CVAT's standard API)
@@ -89,6 +91,9 @@ class TaskAnalysisView(APIView):
         # 5. Generate statistics
         statistics = self._generate_task_statistics(task, jobs, annotation_analysis)
 
+        # 6. Get S3 videos with presigned URLs (if available)
+        videos_info = self._get_videos_info(task, video_expiration)
+
         # Combine all information
         analysis = {
             **basic_info,
@@ -96,6 +101,7 @@ class TaskAnalysisView(APIView):
             "labels": self._format_labels_info(labels),
             "annotation_analysis": annotation_analysis,
             "statistics": statistics,
+            "videos": videos_info,
             "analysis_metadata": {
                 "generated_at": "2025-09-09T20:45:00Z",  # Current timestamp
                 "api_version": "v1.0"
@@ -148,6 +154,7 @@ class TaskAnalysisView(APIView):
                 "verdict_display": train_metadata.verdict_display,
                 "notes": train_metadata.notes,
                 "confidence_score": train_metadata.confidence_score,
+                "server_files_path": train_metadata.server_files_path,
                 "created_date": train_metadata.created_date.isoformat(),
                 "updated_date": train_metadata.updated_date.isoformat(),
                 "is_new": created  # Indicates if metadata was just created
@@ -155,6 +162,62 @@ class TaskAnalysisView(APIView):
         }
 
         return basic_info
+
+    def _get_videos_info(self, task: Task, expiration: int = 3600) -> Dict:
+        """Get S3 videos with presigned URLs if available."""
+
+        videos_info = {
+            "available": False,
+            "server_files_path": None,
+            "s3_bucket": None,
+            "video_count": 0,
+            "videos": [],
+            "error": None
+        }
+
+        try:
+            # Get train metadata with server_files_path
+            train_metadata = task.train_metadata
+            server_files_path = train_metadata.server_files_path
+
+            # Check if server_files_path is valid
+            if not server_files_path or server_files_path == '/':
+                videos_info["error"] = "No valid server_files_path configured"
+                return videos_info
+
+            videos_info["server_files_path"] = server_files_path
+
+            # Generate presigned URLs for videos using environment variables
+            try:
+                s3_generator, bucket_name = create_s3_generator_from_env()
+
+                videos_info["s3_bucket"] = bucket_name
+
+                videos = s3_generator.get_all_videos_with_urls(
+                    bucket_name=bucket_name,
+                    folder_path=server_files_path,
+                    expiration=expiration
+                )
+
+                videos_info["available"] = True
+                videos_info["video_count"] = len(videos)
+                videos_info["videos"] = videos
+                videos_info["expiration_seconds"] = expiration
+
+            except ValueError as e:
+                # Missing S3 environment variables
+                videos_info["error"] = f"S3 not configured: {str(e)}"
+            except Exception as e:
+                videos_info["error"] = f"Failed to get videos: {str(e)}"
+
+        except TaskTrainMetadata.DoesNotExist:
+            videos_info["error"] = "No train metadata found"
+        except AttributeError:
+            videos_info["error"] = "Task data not available"
+        except Exception as e:
+            videos_info["error"] = f"Unexpected error: {str(e)}"
+
+        return videos_info
 
     def _get_jobs_info(self, jobs) -> List[Dict]:
         """Get information about all jobs in the task."""
