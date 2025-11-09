@@ -17,6 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from cvat.apps.engine.models import Task
 from .models import TaskTrainMetadata
 from .s3_utils import create_s3_generator_from_env
+from drf_spectacular.utils import extend_schema
 
 
 class TaskVideosView(APIView):
@@ -34,6 +35,7 @@ class TaskVideosView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='custom_list_task_videos', summary='List all videos for a task')
     def get(self, request, task_id):
         """
         Get videos from task's server_files_path with presigned URLs.
@@ -159,6 +161,7 @@ class TaskSingleVideoView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='custom_get_single_video', summary='Get presigned URL for a specific video')
     def get(self, request, task_id, video_path):
         """
         Get presigned URL for a specific video.
@@ -253,6 +256,7 @@ class TaskVideosQuickView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(operation_id='custom_check_videos_availability', summary='Check if videos are available for a task')
     def get(self, request, task_id):
         """
         Check if task has videos available.
