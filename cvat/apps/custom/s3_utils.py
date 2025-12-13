@@ -13,6 +13,9 @@ import os
 from typing import Optional, List, Dict
 from botocore.exceptions import ClientError, NoCredentialsError
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class S3PresignedURLGenerator:
@@ -117,6 +120,7 @@ class S3PresignedURLGenerator:
             Presigned URL as string
         """
         try:
+            logger.info(f"Generating presigned URL for bucket: {bucket_name}, key: {object_key}")
             url = self.s3_client.generate_presigned_url(
                 'get_object',
                 Params={
@@ -247,5 +251,6 @@ def create_s3_generator_from_env():
     )
     _s3_bucket_name = bucket_name
 
+    logger.info(f"Loaded S3 configuration from env. Bucket: {bucket_name}")
     return _s3_generator_instance, _s3_bucket_name
 
