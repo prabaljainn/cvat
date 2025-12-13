@@ -91,7 +91,7 @@ class TasksPaginatedView(APIView):
                 'project', 'owner', 'assignee', 'data'
             ).prefetch_related(
                 'train_metadata'
-            ).all()
+            ).order_by('-id')
 
             # Apply filters
             if project_id_filter:
