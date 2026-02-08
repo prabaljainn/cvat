@@ -438,6 +438,11 @@ export interface PluginsState {
                 items: PluginComponent[];
             };
         };
+        aiTools: {
+            interactors: {
+                extras: PluginComponent[];
+            };
+        };
         router: PluginComponent[];
     }
 }
@@ -784,6 +789,7 @@ export enum StatesOrdering {
     ID_ASCENT = 'ID - ascent',
     UPDATED = 'Updated time',
     Z_ORDER = 'Z Order',
+    LABEL_NAME = 'Label name',
 }
 
 export enum ContextMenuType {
@@ -800,6 +806,7 @@ export enum NavigationType {
     REGULAR = 'regular',
     FILTERED = 'filtered',
     EMPTY = 'empty',
+    CHAPTER = 'chapter',
 }
 
 export interface EditingState {
@@ -870,6 +877,7 @@ export interface AnnotationState {
         navigationBlocked: boolean;
         playing: boolean;
         frameAngles: number[];
+        hoveredChapter: number | null;
     };
     drawing: {
         activeInteractor?: MLModel | OpenCVTool;
@@ -982,7 +990,7 @@ export interface PlayerSettingsState {
 export interface WorkspaceSettingsState {
     autoSave: boolean;
     autoSaveInterval: number; // in ms
-    aamZoomMargin: number;
+    focusedObjectPadding: number;
     automaticBordering: boolean;
     adaptiveZoom: boolean;
     showObjectsTextAlways: boolean;

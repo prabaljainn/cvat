@@ -56,13 +56,14 @@ from cvat.apps.engine.rq import ImportRQMeta
 from ..engine.log import ServerLogManager
 from .annotation import AnnotationIR, AnnotationManager, TrackManager
 from .formats.transformations import MaskConverter
+from .util import make_getter_by_frame_for_annotation_stream
 
 if TYPE_CHECKING:
     from .project import ProjectAnnotation
 
 slogger = ServerLogManager(__name__)
 
-CVAT_INTERNAL_ATTRIBUTES = {'occluded', 'outside', 'keyframe', 'track_id', 'rotation'}
+CVAT_INTERNAL_ATTRIBUTES = {'occluded', 'outside', 'keyframe', 'track_id', 'rotation', 'source', 'score'}
 
 class InstanceLabelData:
     class Attribute(NamedTuple):
@@ -230,6 +231,7 @@ class CommonData(InstanceLabelData):
         elements: Sequence[CommonData.LabeledShape] = ()
         outside: bool = False
         id: int | None = None
+        score: float = 1.0
 
     class TrackedShape(NamedTuple):
         type: int
@@ -504,31 +506,7 @@ class CommonData(InstanceLabelData):
             self._annotation_ir, dimension=self._annotation_ir.dimension
         )
 
-        def get_anns_for_frame(gen):
-            if isinstance(gen, list):
-                gen = iter(gen)
-            ann = None
-
-            def get(frame_index):
-                nonlocal ann
-
-                while True:
-                    if ann is None:
-                        try:
-                            ann = next(gen)
-                        except StopIteration:
-                            break
-
-                    assert ann["frame"] >= frame_index
-                    if ann["frame"] == frame_index:
-                        yield ann
-                        ann = None
-                    else:
-                        break
-
-            return get
-
-        get_shapes_for_frame = get_anns_for_frame(
+        get_shapes_for_frame = make_getter_by_frame_for_annotation_stream(
             anno_manager.to_shapes(
                 self.stop + 1,
                 # Skip outside, deleted and excluded frames
@@ -539,7 +517,7 @@ class CommonData(InstanceLabelData):
             )
         )
 
-        get_tags_for_frame = get_anns_for_frame(
+        get_tags_for_frame = make_getter_by_frame_for_annotation_stream(
             sorted(
                 (
                     tag
@@ -1651,7 +1629,7 @@ class MediaProvider3D(MediaProvider):
 
             frame_related_images = {
                 ri_path: Path(ri_realpath).read_bytes()
-                for _, (ri_realpath, ri_path, _) in cache.read_raw_context_images(
+                for _, (ri_realpath, ri_path) in cache.read_raw_context_images(
                     self._sources[self._current_source_id].db_task.data,
                     frame_ids=[frame_id],
                     truncate_common_filename_prefix=False,
@@ -2271,6 +2249,10 @@ def import_dm_annotations(dm_dataset: dm.Dataset, instance_data: ProjectData | C
                 if hasattr(ann, 'label') and ann.label is None:
                     raise CvatImportError("annotation has no label")
 
+                score = ann.attributes.pop('score', None)
+                if score is None:
+                    score = 1
+
                 attributes = [
                     instance_data.Attribute(name=n, value=str(v))
                     for n, v in ann.attributes.items()
@@ -2346,6 +2328,7 @@ def import_dm_annotations(dm_dataset: dm.Dataset, instance_data: ProjectData | C
                             rotation=rotation,
                             attributes=attributes,
                             elements=elements,
+                            score=score,
                         ))
                         continue
 

@@ -78,7 +78,7 @@ from cvat.apps.engine.tests.utils import (
 )
 from cvat.apps.redis_handler.serializers import RequestStatus
 from utils.dataset_manifest import ImageManifestManager, VideoManifestManager
-from utils.dataset_manifest.utils import PcdReader, find_related_images
+from utils.dataset_manifest.utils import MemOpenable, PcdReader, find_related_images
 
 from .utils import ASSETS_DIR, check_annotation_response, compare_objects
 
@@ -94,14 +94,14 @@ def create_db_users(
     extra: bool = True,
 ):
     if admin:
-        (group_admin, _) = Group.objects.get_or_create(name="admin")
+        group_admin, _ = Group.objects.get_or_create(name="admin")
         user_admin = User.objects.create_superuser(username="admin", email="", password="admin")
         user_admin.groups.add(group_admin)
         cls.admin = user_admin
 
     if primary:
-        (group_user, _) = Group.objects.get_or_create(name="user")
-        (group_annotator, _) = Group.objects.get_or_create(name="worker")
+        group_user, _ = Group.objects.get_or_create(name="user")
+        group_annotator, _ = Group.objects.get_or_create(name="worker")
         user_owner = User.objects.create_user(username="user1", password="user1")
         user_owner.groups.add(group_user)
         user_assignee = User.objects.create_user(username="user2", password="user2")
@@ -113,7 +113,7 @@ def create_db_users(
         cls.annotator = cls.user3 = user_annotator
 
     if extra:
-        (group_somebody, _) = Group.objects.get_or_create(name="somebody")
+        group_somebody, _ = Group.objects.get_or_create(name="somebody")
         user_somebody = User.objects.create_user(username="user4", password="user4")
         user_somebody.groups.add(group_somebody)
         user_dummy = User.objects.create_user(username="user5", password="user5")
@@ -826,25 +826,32 @@ class UserPartialUpdateAPITestCase(UserAPITestCase):
     def test_api_v2_users_id_admin_partial(self):
         data = {"username": "user09", "last_name": "my last name"}
         response = self._run_api_v2_users_id(self.admin, self.user.id, data)
+        self._check_response_with_data(self.user, response, data, True)
 
+        data = {"is_staff": True, "is_superuser": True, "is_active": False, "groups": ["admin"]}
+        response = self._run_api_v2_users_id(self.admin, self.user.id, data)
         self._check_response_with_data(self.user, response, data, True)
 
     def test_api_v2_users_id_user_partial(self):
         data = {"username": "user10", "first_name": "my name"}
         response = self._run_api_v2_users_id(self.user, self.user.id, data)
-        self._check_response_with_data(self.user, response, data, False)
+        self._check_response_with_data(self.user, response, data, True)
+
+        data = {"email": "unverified@example.com"}
+        response = self._run_api_v2_users_id(self.user, self.user.id, data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         data = {"is_staff": True}
         response = self._run_api_v2_users_id(self.user, self.user.id, data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         data = {"username": "admin", "is_superuser": True}
         response = self._run_api_v2_users_id(self.user, self.user.id, data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         data = {"username": "non_active", "is_active": False}
         response = self._run_api_v2_users_id(self.user, self.user.id, data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         data = {"username": "annotator01", "first_name": "slave"}
         response = self._run_api_v2_users_id(self.user, self.annotator.id, data)
@@ -1401,6 +1408,7 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
     @classmethod
     def _create_media(cls):
+        share_root: Path = settings.SHARE_ROOT
         cls.media_data = []
         cls.media = {
             "files": [],
@@ -1408,13 +1416,15 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
         }
         image_count = 10
         imagename_pattern = "test_{}.jpg"
+
+        share_root: Path = settings.SHARE_ROOT
+
         for i in range(image_count):
             filename = imagename_pattern.format(i)
-            path = os.path.join(settings.SHARE_ROOT, filename)
+            path = share_root / filename
             cls.media["files"].append(path)
             _, data = generate_random_image_file(filename)
-            with open(path, "wb") as image:
-                image.write(data.read())
+            path.write_bytes(data.read())
 
         cls.media_data.append(
             {
@@ -1433,11 +1443,10 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
         )
 
         filename = "test_video_1.mp4"
-        path = os.path.join(settings.SHARE_ROOT, filename)
+        path = share_root / filename
         cls.media["files"].append(path)
         _, data = generate_video_file(filename, width=1280, height=720)
-        with open(path, "wb") as video:
-            video.write(data.read())
+        path.write_bytes(data.read())
         cls.media_data.append(
             {
                 "image_quality": 75,
@@ -1450,11 +1459,10 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
         )
 
         filename = os.path.join("test_archive_1.zip")
-        path = os.path.join(settings.SHARE_ROOT, filename)
+        path = share_root / filename
         cls.media["files"].append(path)
         _, data = generate_zip_archive_file(filename, count=5)
-        with open(path, "wb") as zip_archive:
-            zip_archive.write(data.read())
+        path.write_bytes(data.read())
         cls.media_data.append(
             {
                 "image_quality": 75,
@@ -1463,14 +1471,13 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
         )
 
         filename = os.path.join("videos", "test_video_1.mp4")
-        path = os.path.join(settings.SHARE_ROOT, filename)
+        path = share_root / filename
         cls.media["dirs"].append(os.path.dirname(path))
         os.makedirs(os.path.dirname(path))
         _, data = generate_video_file(filename, width=1280, height=720)
-        with open(path, "wb") as video:
-            video.write(data.read())
+        path.write_bytes(data.read())
 
-        manifest_path = os.path.join(settings.SHARE_ROOT, "videos", "manifest.jsonl")
+        manifest_path = share_root / "videos" / "manifest.jsonl"
         generate_manifest_file(
             data_type=ManifestDataType.video, manifest_path=manifest_path, sources=[path]
         )
@@ -1485,13 +1492,12 @@ class ProjectBackupAPITestCase(ExportApiTestBase, ImportApiTestBase):
             }
         )
 
-        manifest_path = manifest_path = os.path.join(settings.SHARE_ROOT, "manifest.jsonl")
+        manifest_path = share_root / "manifest.jsonl"
         generate_manifest_file(
             data_type=ManifestDataType.images,
             manifest_path=manifest_path,
-            sources=[
-                os.path.join(settings.SHARE_ROOT, imagename_pattern.format(i)) for i in range(1, 8)
-            ],
+            sources=[share_root / imagename_pattern.format(i) for i in range(1, 8)],
+            root_dir=share_root,
         )
         cls.media["files"].append(manifest_path)
         cls.media_data.append(
@@ -2094,21 +2100,21 @@ class ProjectImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
         def _create_task(task_data, media_data):
             response = self.client.post("/api/tasks", data=task_data, format="json")
-            assert response.status_code == status.HTTP_201_CREATED
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             tid = response.data["id"]
 
             for media in media_data.values():
                 if isinstance(media, io.BytesIO):
                     media.seek(0)
             response = self.client.post("/api/tasks/{}/data".format(tid), data=media_data)
-            assert response.status_code == status.HTTP_202_ACCEPTED
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
             rq_id = response.json()["rq_id"]
 
             response = self.client.get(f"/api/requests/{rq_id}")
-            assert response.status_code == status.HTTP_200_OK, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
             response_json = response.json()
             rqjob_status, msg = response_json["status"], response_json["message"]
-            assert rqjob_status == "finished", f"{rqjob_status=}\n{msg=}"
+            self.assertEqual(rqjob_status, "finished", f"Message: {msg}")
 
             response = self.client.get("/api/tasks/{}".format(tid))
             data_id = response.data["data"]
@@ -2145,7 +2151,7 @@ class ProjectImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
         def _create_project(project_data):
             response = self.client.post("/api/projects", data=project_data, format="json")
-            assert response.status_code == status.HTTP_201_CREATED
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.projects.append(response.data)
 
         project_data = [
@@ -2776,6 +2782,7 @@ class TaskMoveAPITestCase(ApiTestBase):
                     "label_id": cls.task.label_set.first().id,
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": cls.task.label_set.first().attributespec_set.first().id,
@@ -3005,6 +3012,7 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
     @classmethod
     def setUpTestData(cls):
         create_db_users(cls)
+        share_root: Path = settings.SHARE_ROOT
 
         cls.media_data = []
 
@@ -3083,7 +3091,7 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
         )
 
         filename = "test_velodyne_points.zip"
-        path = os.path.join(settings.SHARE_ROOT, filename)
+        path = settings.SHARE_ROOT / filename
         shutil.copyfile(ASSETS_DIR / filename, path)
         cls.media_data.append(
             {
@@ -3104,7 +3112,7 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
             if sorting == SortingMethod.PREDEFINED:
                 # Manifest is required for predefined sorting with an archive
-                manifest_path = Path(path).with_suffix(".jsonl")
+                manifest_path = path.with_suffix(".jsonl")
                 with (
                     tempfile.TemporaryDirectory() as temp_dir,
                     zipfile.ZipFile(path, "r") as zip_file,
@@ -3114,7 +3122,7 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
                     generate_manifest_file(
                         ManifestDataType.point_clouds,
                         manifest_path,
-                        glob(os.path.join(temp_dir, "**/*.*"), recursive=True),
+                        list(Path(temp_dir).glob("**/*.*")),
                         sorting_method=SortingMethod.PREDEFINED,
                         root_dir=temp_dir,
                     )
@@ -3124,15 +3132,14 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
                 )
 
         filename = os.path.join("videos", "test_video_1.mp4")
-        path = os.path.join(settings.SHARE_ROOT, filename)
-        os.makedirs(os.path.dirname(path))
+        path = share_root / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
         _, data = generate_video_file(filename, width=1280, height=720)
-        with open(path, "wb") as video:
-            video.write(data.read())
+        path.write_bytes(data.read())
 
         generate_manifest_file(
             data_type=ManifestDataType.video,
-            manifest_path=os.path.join(settings.SHARE_ROOT, "videos", "manifest.jsonl"),
+            manifest_path=share_root / "videos" / "manifest.jsonl",
             sources=[path],
         )
 
@@ -3148,10 +3155,9 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
         generate_manifest_file(
             data_type=ManifestDataType.images,
-            manifest_path=os.path.join(settings.SHARE_ROOT, "manifest.jsonl"),
-            sources=[
-                os.path.join(settings.SHARE_ROOT, imagename_pattern.format(i)) for i in range(1, 8)
-            ],
+            manifest_path=share_root / "manifest.jsonl",
+            sources=[share_root / imagename_pattern.format(i) for i in range(1, 8)],
+            root_dir=share_root,
         )
         cls.media_data.append(
             {
@@ -3275,21 +3281,21 @@ class TaskImportExportAPITestCase(ExportApiTestBase, ImportApiTestBase):
 
         def _create_task(task_data, media_data):
             response = self.client.post("/api/tasks", data=task_data, format="json")
-            assert response.status_code == status.HTTP_201_CREATED
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             tid = response.data["id"]
 
             for media in media_data.values():
                 if isinstance(media, io.BytesIO):
                     media.seek(0)
             response = self.client.post("/api/tasks/{}/data".format(tid), data=media_data)
-            assert response.status_code == status.HTTP_202_ACCEPTED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
             rq_id = response.json()["rq_id"]
 
             response = self.client.get(f"/api/requests/{rq_id}")
-            assert response.status_code == status.HTTP_200_OK, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
             response_json = response.json()
             rqjob_status, msg = response_json["status"], response_json["message"]
-            assert rqjob_status == "finished", f"{rqjob_status=}\n{msg=}"
+            self.assertEqual(rqjob_status, "finished", f"Message: {msg}")
 
             response = self.client.get("/api/tasks/{}".format(tid))
             data_id = response.data["data"]
@@ -3546,42 +3552,34 @@ class ManifestDataType(str, Enum):
 
 def generate_manifest_file(
     data_type: ManifestDataType,
-    manifest_path,
-    sources,
+    manifest_path: Path,
+    sources: list[Path],
     *,
     sorting_method=SortingMethod.LEXICOGRAPHICAL,
-    root_dir=None,
+    root_dir: Path | None = None,
 ):
     if data_type == "video":
-        kwargs = {
-            "media_file": sources[0],
-            "upload_dir": os.path.dirname(sources[0]),
-            "force": True,
-        }
         manifest = VideoManifestManager(manifest_path, create_index=False)
+        manifest.link(media_file=sources[0], force=True)
     else:
-        kwargs = {
-            "sources": sources,
-            "sorting_method": sorting_method,
-            "use_image_hash": True,
-            "data_dir": root_dir,
-            "DIM_3D": data_type == ManifestDataType.point_clouds,
-        }
+        assert root_dir
 
         scenes, related_images = find_related_images(sources, root_path=root_dir)
-        kwargs["meta"] = {k: {"related_images": related_images[k]} for k in related_images}
-        kwargs["sources"] = [
-            p
-            for p in sources
-            if (root_dir is not None and os.path.relpath(p, root_dir) or p) in scenes
-        ]
 
         manifest = ImageManifestManager(manifest_path, create_index=False)
-    manifest.link(**kwargs)
+        manifest.link(
+            sources=[p for p in sources if p.relative_to(root_dir) in scenes],
+            sorting_method=sorting_method,
+            use_image_hash=True,
+            data_dir=root_dir,
+            DIM_3D=data_type == ManifestDataType.point_clouds,
+            meta={k: {"related_images": related_images[k]} for k in related_images},
+        )
+
     manifest.create()
 
 
-def get_manifest_images_list(manifest_path):
+def get_manifest_images_list(manifest_path: Path):
     return list(ImageManifestManager(manifest_path, create_index=False).data)
 
 
@@ -3607,6 +3605,7 @@ class TaskDataAPITestCase(ApiTestBase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        share_root: Path = settings.SHARE_ROOT
 
         cls._share_image_sizes = {}
         cls._share_files = []
@@ -3668,8 +3667,7 @@ class TaskDataAPITestCase(ApiTestBase):
                 if not info.endswith(".pcd"):
                     continue
 
-                with zip_file.open(info, "r") as file:
-                    pcd_properties = ValidateDimension.get_pcd_properties(file)
+                pcd_properties = ValidateDimension.get_pcd_properties(zipfile.Path(zip_file, info))
 
                 image_sizes.append((int(pcd_properties["WIDTH"]), int(pcd_properties["HEIGHT"])))
 
@@ -3694,12 +3692,9 @@ class TaskDataAPITestCase(ApiTestBase):
                 if not info.endswith(".bin"):
                     continue
 
-                with zip_file.open(info, "r") as bin_file:
-                    pcd_file = io.BytesIO()
-                    PcdReader.convert_bin_to_pcd_file(bin_file, output_file=pcd_file)
-                    pcd_file.seek(0)
+                pcd_bytes = PcdReader.convert_bin_to_pcd_buffer(zipfile.Path(zip_file, info))
 
-                pcd_properties = ValidateDimension.get_pcd_properties(pcd_file)
+                pcd_properties = ValidateDimension.get_pcd_properties(MemOpenable(pcd_bytes))
                 image_sizes.append((int(pcd_properties["WIDTH"]), int(pcd_properties["HEIGHT"])))
 
         cls._share_image_sizes[filename] = image_sizes
@@ -3715,8 +3710,8 @@ class TaskDataAPITestCase(ApiTestBase):
         filename = "videos/manifest.jsonl"
         generate_manifest_file(
             data_type=ManifestDataType.video,
-            manifest_path=os.path.join(settings.SHARE_ROOT, filename),
-            sources=[os.path.join(settings.SHARE_ROOT, "videos", "test_video_1.mp4")],
+            manifest_path=share_root / filename,
+            sources=[share_root / "videos" / "test_video_1.mp4"],
         )
         cls._share_files.append(filename)
 
@@ -3733,12 +3728,12 @@ class TaskDataAPITestCase(ApiTestBase):
             filename = "images_manifest{}.jsonl".format("_sorted" if ordered else "")
             generate_manifest_file(
                 data_type=ManifestDataType.images,
-                manifest_path=os.path.join(settings.SHARE_ROOT, filename),
-                sources=[os.path.join(settings.SHARE_ROOT, fn) for fn in image_files],
+                manifest_path=share_root / filename,
+                sources=[share_root / fn for fn in image_files],
                 sorting_method=(
                     SortingMethod.LEXICOGRAPHICAL if ordered else SortingMethod.PREDEFINED
                 ),
-                root_dir=settings.SHARE_ROOT,
+                root_dir=share_root,
             )
             cls._share_files.append(filename)
 
@@ -3857,7 +3852,7 @@ class TaskDataAPITestCase(ApiTestBase):
         chunk = zipfile.ZipFile(archive, mode="r")
         if dimension == DimensionType.DIM_3D:
             return [
-                (f, BytesIO(chunk.read(f)))
+                (f, chunk.read(f))
                 for f in sorted(chunk.namelist())
                 if f.rsplit(".", maxsplit=1)[-1] == "pcd"
             ]
@@ -3956,7 +3951,7 @@ class TaskDataAPITestCase(ApiTestBase):
             self.assertEqual(expected_compressed_type, task["data_compressed_chunk_type"])
             self.assertEqual(expected_original_type, task["data_original_chunk_type"])
             self.assertEqual(len(expected_image_sizes), task["size"])
-            db_data = Task.objects.get(pk=task_id).data
+            db_data = Task.objects.get(pk=task_id).require_data()
             self.assertEqual(expected_storage_method, db_data.storage_method)
             self.assertEqual(expected_uploaded_data_location, db_data.storage)
             # check if used share without copying inside and files doesn`t exist in ../raw/ and exist in share
@@ -3992,7 +3987,7 @@ class TaskDataAPITestCase(ApiTestBase):
 
             for image_idx, received_image in enumerate(images):
                 if dimension == DimensionType.DIM_3D:
-                    properties = ValidateDimension.get_pcd_properties(received_image)
+                    properties = ValidateDimension.get_pcd_properties(MemOpenable(received_image))
                     self.assertEqual(
                         (int(properties["WIDTH"]), int(properties["HEIGHT"])),
                         expected_image_sizes[image_idx],
@@ -4015,7 +4010,7 @@ class TaskDataAPITestCase(ApiTestBase):
 
             for image_idx, received_image in enumerate(images):
                 if dimension == DimensionType.DIM_3D:
-                    properties = ValidateDimension.get_pcd_properties(received_image)
+                    properties = ValidateDimension.get_pcd_properties(MemOpenable(received_image))
                     self.assertEqual(
                         (int(properties["WIDTH"]), int(properties["HEIGHT"])),
                         expected_image_sizes[image_idx],
@@ -4070,7 +4065,7 @@ class TaskDataAPITestCase(ApiTestBase):
                 # Apply the requested sorting to the expected results
                 sorting = data.get("sorting_method", SortingMethod.LEXICOGRAPHICAL)
                 if sorting == SortingMethod.PREDEFINED and manifest:
-                    manifest = _add_prefix(_name_key(manifest))
+                    manifest = Path(_add_prefix(_name_key(manifest)))
                     manifest_root = os.path.dirname(manifest)
                     manifest_files = get_manifest_images_list(manifest)
                     assert len(manifest_files) == len(source_images)
@@ -4089,14 +4084,9 @@ class TaskDataAPITestCase(ApiTestBase):
                     ]
 
                 for received_image, source_image in zip(images, source_images):
-                    if dimension == DimensionType.DIM_3D:
-                        server_image = np.array(received_image.getbuffer())
-                        source_image = np.array(source_image.getbuffer())
-                        self.assertTrue(np.array_equal(source_image, server_image))
-                    else:
-                        server_image = np.array(received_image)
-                        source_image = np.array(source_image)
-                        self.assertTrue(np.array_equal(source_image, server_image))
+                    server_image = np.array(received_image)
+                    source_image = np.array(source_image)
+                    self.assertTrue(np.array_equal(source_image, server_image))
 
     def _test_api_v2_tasks_id_data_create_can_upload_local_images(self, user):
         task_spec = {
@@ -4779,7 +4769,7 @@ class TaskDataAPITestCase(ApiTestBase):
         }
 
         manifest_name = "images_manifest_sorted.jsonl"
-        images = get_manifest_images_list(os.path.join(settings.SHARE_ROOT, manifest_name))
+        images = get_manifest_images_list(settings.SHARE_ROOT / manifest_name)
         image_sizes = [self._share_image_sizes[fn] for fn in images]
         task_data.update(
             {f"server_files[{i}]": fn for i, fn in enumerate(images + [manifest_name])}
@@ -4839,7 +4829,7 @@ class TaskDataAPITestCase(ApiTestBase):
         task_data_common = {"image_quality": 70, "sorting_method": SortingMethod.PREDEFINED}
 
         manifest_name = "images_manifest.jsonl"
-        images = get_manifest_images_list(os.path.join(settings.SHARE_ROOT, manifest_name))
+        images = get_manifest_images_list(settings.SHARE_ROOT / manifest_name)
         image_sizes = [self._share_image_sizes[v] for v in images]
 
         for caching_enabled, manifest in product([True, False], [True, False]):
@@ -4893,9 +4883,9 @@ class TaskDataAPITestCase(ApiTestBase):
             image_sizes, image_files = generate_random_image_files(
                 "test_1.jpg", "test_3.jpg", "test_5.jpg", "test_4.jpg", "test_2.jpg"
             )
-            image_paths = []
+            image_paths: list[Path] = []
             for image in image_files:
-                fp = os.path.join(test_dir, image.name)
+                fp = Path(test_dir, image.name)
                 with open(fp, "wb") as f:
                     f.write(image.getvalue())
                 image_paths.append(fp)
@@ -4904,12 +4894,13 @@ class TaskDataAPITestCase(ApiTestBase):
             task_data_common = {"image_quality": 75, "sorting_method": SortingMethod.PREDEFINED}
 
             for caching_enabled, manifest in product([True, False], [True, False]):
-                manifest_path = os.path.join(test_dir, "manifest.jsonl")
+                manifest_path = Path(test_dir, "manifest.jsonl")
                 generate_manifest_file(
                     ManifestDataType.images,
                     manifest_path,
                     image_paths,
                     sorting_method=SortingMethod.PREDEFINED,
+                    root_dir=Path(test_dir),
                 )
 
                 task_data_common["use_cache"] = caching_enabled
@@ -4991,7 +4982,7 @@ class TaskDataAPITestCase(ApiTestBase):
                 task_data["server_files[0]"] = archive_name
 
                 manifest_name = "images_manifest.jsonl"
-                images = get_manifest_images_list(os.path.join(settings.SHARE_ROOT, manifest_name))
+                images = get_manifest_images_list(settings.SHARE_ROOT / manifest_name)
                 image_sizes = [self._share_image_sizes[v] for v in images]
 
                 kwargs = {}
@@ -5032,9 +5023,9 @@ class TaskDataAPITestCase(ApiTestBase):
             image_sizes, image_files = generate_random_image_files(
                 "test_1.jpg", "test_3.jpg", "test_5.jpg", "test_4.jpg", "test_2.jpg"
             )
-            image_paths = []
+            image_paths: list[Path] = []
             for image in image_files:
-                fp = os.path.join(test_dir, image.name)
+                fp = Path(test_dir, image.name)
                 with open(fp, "wb") as f:
                     f.write(image.getvalue())
                 image_paths.append(fp)
@@ -5065,12 +5056,13 @@ class TaskDataAPITestCase(ApiTestBase):
                 ):
                     task_data = task_data_common.copy()
 
-                    manifest_path = os.path.join(test_dir, "manifest.jsonl")
+                    manifest_path = Path(test_dir, "manifest.jsonl")
                     generate_manifest_file(
                         ManifestDataType.images,
                         manifest_path,
                         image_paths,
                         sorting_method=SortingMethod.PREDEFINED,
+                        root_dir=test_dir,
                     )
 
                     task_data["use_cache"] = caching_enabled
@@ -5194,7 +5186,7 @@ class TaskDataAPITestCase(ApiTestBase):
                 data={"image_quality": task_data["image_quality"]},
                 headers={"Upload-Start": True},
             )
-            assert response.status_code == status.HTTP_202_ACCEPTED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
             for group_idx, file_group in enumerate(file_groups):
                 request_data = {k: v for k, v in data.items() if "_files" not in k}
@@ -5213,12 +5205,12 @@ class TaskDataAPITestCase(ApiTestBase):
                 )
 
                 if group_idx != len(file_groups) - 1:
-                    assert response.status_code == status.HTTP_200_OK, response.status_code
+                    self.assertEqual(response.status_code, status.HTTP_200_OK)
             return response
 
         def _send_data_and_fail(*args, **kwargs):
             response = _send_data(*args, **kwargs)
-            assert response.status_code == status.HTTP_400_BAD_REQUEST, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             raise Exception(response.data)
 
         filenames = [
@@ -5627,7 +5619,12 @@ class JobAnnotationAPITestCase(ApiTestBase):
                 }
 
             response = self.client.post("/api/tasks/{}/data".format(tid), data=images)
-            assert response.status_code == status.HTTP_202_ACCEPTED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
+            rq_id = response.data["rq_id"]
+            response = self.client.get(f"/api/requests/{rq_id}")
+            rqjob_status, msg = response.data["status"], response.data["message"]
+            self.assertEqual(rqjob_status, "finished", f"Message: {msg}")
 
             response = self.client.get("/api/tasks/{}".format(tid))
             task = response.data
@@ -5734,6 +5731,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -5753,6 +5751,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": task["labels"][1]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -5856,6 +5855,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -5875,6 +5875,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": task["labels"][1]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -5995,6 +5996,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": 32234234,
@@ -6014,6 +6016,7 @@ class JobAnnotationAPITestCase(ApiTestBase):
                     "label_id": 1212121,
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -6166,6 +6169,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -6185,6 +6189,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": task["labels"][1]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -6288,6 +6293,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -6307,6 +6313,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": task["labels"][1]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -6427,6 +6434,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": task["labels"][0]["id"],
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [
                         {
                             "spec_id": 32234234,
@@ -6446,6 +6454,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                     "label_id": 1212121,
                     "group": None,
                     "source": "manual",
+                    "score": 1.0,
                     "attributes": [],
                     "points": [2.0, 2.1, 100, 300.222, 400, 500, 1, 3],
                     "type": "polygon",
@@ -6668,6 +6677,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -6694,6 +6704,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][2]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][2]["attributes"][0]["id"],
@@ -6724,6 +6735,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][1]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [2.0, 2.1, 40, 50.7],
                         "type": "rectangle",
@@ -6741,6 +6753,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][1]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [2.0, 2.1, 100, 30.22, 40, 77, 1, 3],
                         "type": "polygon",
@@ -6758,6 +6771,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 1,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -6798,6 +6812,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][1]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [20.0, 0.1, 10, 3.22, 4, 7, 10, 30, 1, 2],
                         "type": "points",
@@ -6926,6 +6941,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [4, 4, 5, 91, 96, 93, 97, 4],
                         "type": "polygon",
@@ -6938,6 +6954,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][1]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [14, 14, 15, 85, 88, 87, 90, 13],
                         "type": "polygon",
@@ -6996,6 +7013,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [
                             -3.62,
@@ -7027,6 +7045,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "points": [
                             23.01,
@@ -7080,6 +7099,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -7097,6 +7117,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -7118,6 +7139,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -7147,6 +7169,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "label_id": task["labels"][0]["id"],
                         "group": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [
                             {
                                 "spec_id": task["labels"][0]["attributes"][0]["id"],
@@ -7192,6 +7215,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                         "group": 0,
                         "frame": 0,
                         "source": "manual",
+                        "score": 1.0,
                         "attributes": [],
                         "elements": [
                             {
@@ -7206,6 +7230,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                                 "label_id": task["labels"][0]["sublabels"][0]["id"],
                                 "group": 0,
                                 "source": "manual",
+                                "score": 1.0,
                                 "attributes": [],
                             },
                             {
@@ -7220,6 +7245,7 @@ class TaskAnnotationAPITestCase(ExportApiTestBase, ImportApiTestBase, JobAnnotat
                                 "label_id": task["labels"][0]["sublabels"][1]["id"],
                                 "group": 0,
                                 "source": "manual",
+                                "score": 1.0,
                                 "attributes": [],
                             },
                         ],
@@ -7575,6 +7601,11 @@ class ServerShareAPITestCase(ApiTestBase):
         response = self._run_api_v2_server_share(None, "/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_api_v2_server_share_directory_traversal(self):
+        response = self._run_api_v2_server_share(self.admin, "../")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("is an invalid directory", response.content.decode("utf-8"))
+
 
 class ServerShareDifferentTypesAPITestCase(ApiTestBase):
     @classmethod
@@ -7677,11 +7708,11 @@ class TaskAnnotation2DContext(ApiTestBase):
     def _create_task(self, data, image_data):
         with ForceLogin(self.user, self.client):
             response = self.client.post("/api/tasks", data=data, format="json")
-            assert response.status_code == status.HTTP_201_CREATED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             tid = response.data["id"]
 
             response = self.client.post("/api/tasks/%s/data" % tid, data=image_data)
-            assert response.status_code == status.HTTP_202_ACCEPTED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
             response = self.client.get("/api/tasks/%s" % tid)
             task = response.data
@@ -7806,11 +7837,11 @@ class TaskChangeCloudStorageTestCase(_CloudStorageTestBase):
     def _create_task(self, data, image_data):
         with ForceLogin(self.owner, self.client):
             response = self.client.post("/api/tasks", data=data, format="json")
-            assert response.status_code == status.HTTP_201_CREATED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             tid = response.data["id"]
 
             response = self.client.post("/api/tasks/%s/data" % tid, data=image_data)
-            assert response.status_code == status.HTTP_202_ACCEPTED, response.status_code
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
             response = self.client.get("/api/tasks/%s" % tid)
             task = response.data
@@ -7827,9 +7858,9 @@ class TaskChangeCloudStorageTestCase(_CloudStorageTestBase):
 
         with ForceLogin(self.owner, self.client):
             response = self.client.get(f"/api/tasks/{task_id}/data/meta")
-            assert response.status_code == status.HTTP_200_OK
-            assert response.json()["storage"] == "cloud_storage"
-            assert response.json()["cloud_storage_id"] == self.cloud_storage_id_1
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.json()["storage"], "cloud_storage")
+            self.assertEqual(response.json()["cloud_storage_id"], self.cloud_storage_id_1)
 
             self.client.get(f"/api/tasks/{task_id}/preview")
             for quality in ["compressed", "original"]:
@@ -7837,7 +7868,7 @@ class TaskChangeCloudStorageTestCase(_CloudStorageTestBase):
                     url = f"/api/tasks/{task_id}/data?type=frame&quality={quality}&number={frame}"
                     self.client.get(url)
 
-            assert len(get_cache_keys()) > 0
+            self.assertGreater(len(get_cache_keys()), 0)
 
             response = self.client.patch(
                 f"/api/tasks/{task_id}/data/meta",

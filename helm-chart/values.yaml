@@ -8,6 +8,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 cvat:
+  ingress:
+    annotations: {}
   backend:
     labels: {}
     annotations: {}
@@ -218,7 +220,7 @@ cvat:
   opa:
     replicas: 1
     image: openpolicyagent/opa
-    tag: 0.63.0
+    tag: 1.12.2
     imagePullPolicy: IfNotPresent
     labels: {}
     #  test: test
@@ -396,6 +398,8 @@ nuclio:
 analytics:
   # Set clickhouse.enabled to false if you disable analytics or use an external database
   enabled: true
+  ingress:
+    annotations: {}
   clickhouseDb: cvat
   clickhouseUser: user
   clickhousePassword: user

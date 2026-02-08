@@ -19,8 +19,9 @@ from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from enum import IntEnum
 from fractions import Fraction
+from pathlib import Path, PurePath
 from random import shuffle
-from typing import Any, ClassVar, Optional, Protocol, TypeVar, Union
+from typing import Any, ClassVar, Protocol, TypeAlias, TypedDict, TypeVar
 
 import av
 import av.codec
@@ -43,9 +44,16 @@ from cvat.apps.engine.mime_types import mimetypes
 from utils.dataset_manifest import ImageManifestManager, VideoManifestManager
 from utils.dataset_manifest.errors import InvalidPcdError
 from utils.dataset_manifest.utils import MediaDimension as _MediaDimension
-from utils.dataset_manifest.utils import PcdReader, detect_media_dimension
+from utils.dataset_manifest.utils import MemOpenable, Openable, PcdReader, detect_media_dimension
 
 ORIENTATION_EXIF_TAG = 274
+
+
+class Chapter(TypedDict):
+    id: int
+    metadata: dict[str, str]
+    start: int
+    stop: int
 
 
 class ORIENTATION(IntEnum):
@@ -83,7 +91,9 @@ def files_to_ignore(directory):
     return False
 
 
-def sort(images, sorting_method=SortingMethod.LEXICOGRAPHICAL, func=None):
+def sort(
+    images: list[_T], sorting_method: SortingMethod, func: Callable[[_T], str] | None = None
+) -> list[_T]:
     if sorting_method == SortingMethod.LEXICOGRAPHICAL:
         return sorted(images, key=func)
     elif sorting_method == SortingMethod.NATURAL:
@@ -97,24 +107,44 @@ def sort(images, sorting_method=SortingMethod.LEXICOGRAPHICAL, func=None):
         raise NotImplementedError()
 
 
-def image_size_within_orientation(img: Image.Image):
+def image_size_within_orientation(img: Image.Image) -> tuple[int, int]:
     orientation = img.getexif().get(ORIENTATION_EXIF_TAG, ORIENTATION.NORMAL_HORIZONTAL)
     if orientation > 4:
         return img.height, img.width
     return img.width, img.height
 
 
-def has_exif_rotation(img: Image.Image):
+def has_exif_rotation(img: Image.Image) -> bool:
     return (
         img.getexif().get(ORIENTATION_EXIF_TAG, ORIENTATION.NORMAL_HORIZONTAL)
         != ORIENTATION.NORMAL_HORIZONTAL
     )
 
 
-def load_image(image: tuple[str, str, str]) -> tuple[Image.Image, str, str]:
+def load_image(image: tuple[str, str]) -> tuple[Image.Image, str]:
     with Image.open(image[0]) as pil_img:
         pil_img.load()
-        return pil_img, image[1], image[2]
+        return pil_img, image[1]
+
+
+def get_video_chapters(
+    manifest_path: Path, segment: tuple[int, int] | None = None
+) -> list[Chapter]:
+    if not manifest_path.is_file():
+        # Some videos can have no manifest. Typically, because there are issues with keyframes.
+        # In this case we don't have a quick and reliable source of information about chapters,
+        # so we don't return them.
+        return []
+
+    manifest = VideoManifestManager(manifest_path)
+
+    chapters = manifest.chapters
+
+    if segment:
+        chapters = [
+            chapter for chapter in manifest.chapters if segment[0] <= chapter["start"] <= segment[1]
+        ]
+    return chapters
 
 
 _T = TypeVar("_T")
@@ -123,31 +153,30 @@ _T = TypeVar("_T")
 class RandomAccessIterator(Iterator[_T]):
     def __init__(self, iterable: Iterable[_T]):
         self.iterable: Iterable[_T] = iterable
-        self.iterator: Optional[Iterator[_T]] = None
+        self.iterator: Iterator[_T] | None = None
         self.pos: int = -1
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
+    def __next__(self) -> _T:
         return self[self.pos + 1]
 
-    def __getitem__(self, idx: int) -> Optional[_T]:
+    def __getitem__(self, idx: int) -> _T:
         assert 0 <= idx
         if self.iterator is None or idx <= self.pos:
             self.reset()
-        v = None
-        while self.pos < idx:
+
+        while True:
             # NOTE: don't keep the last item in self, it can be expensive
             v = next(self.iterator)
             self.pos += 1
-        return v
 
-    def reset(self):
+            if self.pos == idx:
+                return v
+
+    def reset(self) -> None:
         self.close()
         self.iterator = iter(self.iterable)
 
-    def close(self):
+    def close(self) -> None:
         if self.iterator is not None:
             if close := getattr(self.iterator, "close", None):
                 close()
@@ -174,7 +203,7 @@ class CachingMediaIterator(RandomAccessIterator[_MediaT]):
         *,
         max_cache_memory: int,
         max_cache_entries: int,
-        object_size_callback: Optional[Callable[[_MediaT], int]] = None,
+        object_size_callback: Callable[[_MediaT], int] | None = None,
     ):
         super().__init__(iterable)
         self.max_cache_entries = max_cache_entries
@@ -214,17 +243,22 @@ class CachingMediaIterator(RandomAccessIterator[_MediaT]):
 
 
 class IMediaReader(ABC):
+    ImageFrame: TypeAlias = tuple[Path | io.BytesIO, Path]
+    """
+    The first element is the contents of the image or the file system path to it.
+    The second element is always the path to the image.
+    """
+
+    VideoFrame: TypeAlias = tuple[av.VideoFrame, None]
+
     def __init__(
         self,
-        source_path,
         *,
         start: int = 0,
-        stop: Optional[int] = None,
+        stop: int | None = None,
         step: int = 1,
         dimension: DimensionType = DimensionType.DIM_2D,
     ):
-        self._source_path = source_path
-
         self._step = step
 
         self._start = start
@@ -236,15 +270,11 @@ class IMediaReader(ABC):
         self._dimension = dimension
 
     @abstractmethod
-    def __iter__(self):
+    def __iter__(self) -> Iterator[ImageFrame] | Iterator[VideoFrame]:
         pass
 
     @abstractmethod
-    def get_progress(self, pos):
-        pass
-
-    @abstractmethod
-    def get_image_size(self, i):
+    def get_image_size(self, i) -> tuple[int, int]:
         pass
 
     @property
@@ -252,7 +282,7 @@ class IMediaReader(ABC):
         return self._start
 
     @property
-    def stop(self) -> Optional[int]:
+    def stop(self) -> int | None:
         return self._stop
 
     @property
@@ -263,46 +293,46 @@ class IMediaReader(ABC):
 class ImageListReader(IMediaReader):
     def __init__(
         self,
-        source_path,
+        source_paths: list[Path],
         step: int = 1,
         start: int = 0,
-        stop: Optional[int] = None,
+        stop: int | None = None,
         dimension: DimensionType = DimensionType.DIM_2D,
         sorting_method: SortingMethod = SortingMethod.LEXICOGRAPHICAL,
     ):
-        if not source_path:
+        if not source_paths:
             raise Exception("No image found")
 
         if not stop:
-            stop = len(source_path) - 1
+            stop = len(source_paths) - 1
         else:
-            stop = min(len(source_path) - 1, stop)
+            stop = min(len(source_paths) - 1, stop)
 
         step = max(step, 1)
         assert stop >= start
 
         super().__init__(
-            source_path=sort(source_path, sorting_method),
             step=step,
             start=start,
             stop=stop,
             dimension=dimension,
         )
 
+        self._source_paths = sort(source_paths, sorting_method, os.fspath)
         self._sorting_method = sorting_method
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[IMediaReader.ImageFrame]:
         for i in self.frame_range:
-            yield (self.get_image(i), self.get_path(i), i)
+            yield (self.get_image(i), self.get_path(i))
 
     def __contains__(self, media_file):
-        return media_file in self._source_path
+        return media_file in self._source_paths
 
-    def filter(self, callback):
-        source_path = list(filter(callback, self._source_path))
+    def filter(self, callback: Callable[[Path], bool]) -> None:
+        source_paths = list(filter(callback, self._source_paths))
         ImageListReader.__init__(
             self,
-            source_path,
+            source_paths,
             step=self._step,
             start=self._start,
             stop=self._stop,
@@ -310,30 +340,26 @@ class ImageListReader(IMediaReader):
             sorting_method=self._sorting_method,
         )
 
-    def get_path(self, i):
-        return self._source_path[i]
+    def get_path(self, i: int) -> Path:
+        return self._source_paths[i]
 
-    def get_image(self, i):
-        return self._source_path[i]
+    def get_image(self, i: int) -> Path | io.BytesIO:
+        return self._source_paths[i]
 
-    def get_progress(self, pos):
-        return (pos + 1) / (len(self.frame_range) or 1)
-
-    def get_image_size(self, i):
+    def get_image_size(self, i) -> tuple[int, int]:
         if self._dimension == DimensionType.DIM_3D:
-            with open(self.get_path(i), "rb") as f:
-                properties = ValidateDimension.get_pcd_properties(f)
-                return int(properties["WIDTH"]), int(properties["HEIGHT"])
-        with Image.open(self._source_path[i]) as img:
+            properties = ValidateDimension.get_pcd_properties(Path(self.get_path(i)))
+            return int(properties["WIDTH"]), int(properties["HEIGHT"])
+        with Image.open(self._source_paths[i]) as img:
             return image_size_within_orientation(img)
 
     def reconcile(
-        self, source_files, step=1, start=0, stop=None, dimension=None, sorting_method=None
+        self, source_paths, step=1, start=0, stop=None, dimension=None, sorting_method=None
     ):
         # FIXME
         ImageListReader.__init__(
             self,
-            source_path=source_files,
+            source_paths=source_paths,
             step=step,
             start=start,
             stop=stop,
@@ -343,7 +369,7 @@ class ImageListReader(IMediaReader):
 
     @property
     def absolute_source_paths(self):
-        return [self.get_path(idx) for idx, _ in enumerate(self._source_path)]
+        return [self.get_path(idx) for idx, _ in enumerate(self._source_paths)]
 
     def __len__(self):
         return len(self.frame_range)
@@ -356,21 +382,21 @@ class ImageListReader(IMediaReader):
 class DirectoryReader(ImageListReader):
     def __init__(
         self,
-        source_path,
+        source_paths: list[Path],
         step=1,
         start=0,
         stop=None,
         dimension=DimensionType.DIM_2D,
         sorting_method=SortingMethod.LEXICOGRAPHICAL,
     ):
-        image_paths = []
-        for source in source_path:
-            for root, _, files in os.walk(source):
-                paths = [os.path.join(root, f) for f in files]
-                paths = filter(lambda x: get_mime(x) == "image", paths)
-                image_paths.extend(paths)
+        image_paths = [
+            path
+            for source in source_paths
+            for path in source.rglob("*")
+            if get_mime(path) == "image"
+        ]
         super().__init__(
-            source_path=image_paths,
+            source_paths=image_paths,
             step=step,
             start=start,
             stop=stop,
@@ -382,7 +408,7 @@ class DirectoryReader(ImageListReader):
 class ArchiveReader(DirectoryReader):
     def __init__(
         self,
-        source_path,
+        source_paths: list[Path],
         step=1,
         start=0,
         stop=None,
@@ -390,15 +416,14 @@ class ArchiveReader(DirectoryReader):
         sorting_method=SortingMethod.LEXICOGRAPHICAL,
         extract_dir=None,
     ):
-
-        self._archive_source = source_path[0]
-        tmp_dir = extract_dir if extract_dir else os.path.dirname(source_path[0])
+        (self._archive_source,) = source_paths
+        tmp_dir = extract_dir if extract_dir else self._archive_source.parent
         patool_path = os.path.join(sysconfig.get_path("scripts"), "patool")
         Archive(self._archive_source).extractall(tmp_dir, False, patool_path)
         if not extract_dir:
             os.remove(self._archive_source)
         super().__init__(
-            source_path=[tmp_dir],
+            source_paths=[tmp_dir],
             step=step,
             start=start,
             stop=stop,
@@ -410,7 +435,7 @@ class ArchiveReader(DirectoryReader):
 class PdfReader(ImageListReader):
     def __init__(
         self,
-        source_path,
+        source_paths: list[Path],
         step=1,
         start=0,
         stop=None,
@@ -418,10 +443,7 @@ class PdfReader(ImageListReader):
         sorting_method=SortingMethod.LEXICOGRAPHICAL,
         extract_dir=None,
     ):
-        if not source_path:
-            raise Exception("No PDF found")
-
-        self._pdf_source = source_path[0]
+        (self._pdf_source,) = source_paths
 
         _basename = os.path.splitext(os.path.basename(self._pdf_source))[0]
         _counter = itertools.count()
@@ -432,7 +454,7 @@ class PdfReader(ImageListReader):
 
         from pdf2image import convert_from_path
 
-        self._tmp_dir = extract_dir if extract_dir else os.path.dirname(source_path[0])
+        self._tmp_dir = extract_dir if extract_dir else os.path.dirname(self._pdf_source)
         os.makedirs(self._tmp_dir, exist_ok=True)
 
         # Avoid OOM: https://github.com/openvinotoolkit/cvat/issues/940
@@ -446,10 +468,10 @@ class PdfReader(ImageListReader):
         )
 
         if not extract_dir:
-            os.remove(source_path[0])
+            os.remove(self._pdf_source)
 
         super().__init__(
-            source_path=paths,
+            source_paths=list(map(Path, paths)),
             step=step,
             start=start,
             stop=stop,
@@ -461,7 +483,7 @@ class PdfReader(ImageListReader):
 class ZipReader(ImageListReader):
     def __init__(
         self,
-        source_path,
+        source_paths: Sequence[Path | io.BytesIO],
         step=1,
         start=0,
         stop=None,
@@ -469,7 +491,8 @@ class ZipReader(ImageListReader):
         sorting_method=SortingMethod.LEXICOGRAPHICAL,
         extract_dir=None,
     ):
-        self._zip_source = zipfile.ZipFile(source_path[0], mode="r")
+        (zip_path,) = source_paths
+        self._zip_source = zipfile.ZipFile(zip_path, mode="r")
         self.extract_dir = extract_dir
         file_list = [
             f for f in self._zip_source.namelist() if files_to_ignore(f) and get_mime(f) == "image"
@@ -486,28 +509,27 @@ class ZipReader(ImageListReader):
     def __del__(self):
         self._zip_source.close()
 
-    def get_image_size(self, i):
+    def get_image_size(self, i) -> tuple[int, int]:
         if self._dimension == DimensionType.DIM_3D:
-            with open(self.get_path(i), "rb") as f:
-                properties = PcdReader.parse_pcd_header(f)
-                return int(properties["WIDTH"]), int(properties["HEIGHT"])
-        with Image.open(io.BytesIO(self._zip_source.read(self._source_path[i]))) as img:
+            properties = PcdReader.parse_pcd_header(Path(self.get_path(i)))
+            return int(properties["WIDTH"]), int(properties["HEIGHT"])
+        with Image.open(io.BytesIO(self._zip_source.read(self._source_paths[i]))) as img:
             return image_size_within_orientation(img)
 
-    def get_image(self, i):
+    def get_image(self, i: int) -> Path | io.BytesIO:
         if self._dimension == DimensionType.DIM_3D:
             return self.get_path(i)
-        return io.BytesIO(self._zip_source.read(self._source_path[i]))
+        return io.BytesIO(self._zip_source.read(self._source_paths[i]))
 
     def get_zip_filename(self):
         return self._zip_source.filename
 
-    def get_path(self, i):
-        path = self._source_path[i]
+    def get_path(self, i: int) -> Path:
+        path = self._source_paths[i]
 
         prefix = self._get_extract_prefix()
         if prefix is not None:
-            path = os.path.join(prefix, path)
+            path = prefix / path
 
         return path
 
@@ -520,35 +542,35 @@ class ZipReader(ImageListReader):
 
         return super().__contains__(path)
 
-    def _get_extract_prefix(self) -> str | None:
+    def _get_extract_prefix(self) -> Path | None:
         if self.extract_dir is not None:
             return self.extract_dir
 
         if self._zip_source.filename is not None:
-            return os.path.dirname(self._zip_source.filename)
+            return Path(self._zip_source.filename).parent
 
         return None
 
     def filter(self, callback):
         prefix = self._get_extract_prefix()
         if prefix is not None:
-            updated_callback = lambda p: callback(os.path.join(prefix, p))
+            updated_callback = lambda p: callback(prefix / p)
         else:
             updated_callback = callback
 
         return super().filter(updated_callback)
 
     def reconcile(
-        self, source_files, step=1, start=0, stop=None, dimension=None, sorting_method=None
+        self, source_paths, step=1, start=0, stop=None, dimension=None, sorting_method=None
     ):
         prefix = self._get_extract_prefix()
-        if source_files and prefix is not None:
+        if source_paths and prefix is not None:
             # file list is expected to be a processed output of self.get_path()
             # which returns files with the output directory prefix
-            source_files = [os.path.relpath(fn, prefix) for fn in source_files]
+            source_paths = [os.path.relpath(fn, prefix) for fn in source_paths]
 
         super().reconcile(
-            source_files=source_files,
+            source_paths=source_paths,
             step=step,
             start=start,
             stop=stop,
@@ -562,42 +584,38 @@ class ZipReader(ImageListReader):
             os.remove(self._zip_source.filename)
 
 
-class _AvVideoReading:
-    def read_av_container(self, source: Union[str, io.BytesIO]) -> av.container.InputContainer:
-        if isinstance(source, io.BytesIO):
-            source.seek(0)  # required for re-reading
-
-        return av.open(source)
-
-
 class VideoReader(IMediaReader):
     def __init__(
         self,
-        source_path: Union[str, io.BytesIO],
+        source_paths: Sequence[Openable | io.BytesIO],
         step: int = 1,
         start: int = 0,
-        stop: Optional[int] = None,
+        stop: int | None = None,
         dimension: DimensionType = DimensionType.DIM_2D,
         *,
         allow_threading: bool = False,
     ):
         super().__init__(
-            source_path=source_path,
             step=step,
             start=start,
             stop=stop,
             dimension=dimension,
         )
 
+        (source_path,) = source_paths
+        if isinstance(source_path, io.BytesIO):
+            self._source_path = MemOpenable(source_path.read())
+        else:
+            self._source_path = source_path
         self.allow_threading = allow_threading
-        self._frame_count: Optional[int] = None
-        self._frame_size: Optional[tuple[int, int]] = None  # (w, h)
+        self._frame_count: int | None = None
+        self._frame_size: tuple[int, int] | None = None  # (w, h)
 
     def iterate_frames(
         self,
         *,
-        frame_filter: Union[bool, Iterable[int]] = True,
-    ) -> Iterator[tuple[av.VideoFrame, str, int]]:
+        frame_filter: bool | Iterable[int] = True,
+    ) -> Iterator[IMediaReader.VideoFrame]:
         """
         If provided, frame_filter must be an ordered sequence in the ascending order.
         'True' means using the frames configured in the reader object.
@@ -616,7 +634,7 @@ class VideoReader(IMediaReader):
         if next_frame_filter_frame is None:
             return
 
-        with self._read_av_container() as container:
+        with self._source_path.open("rb") as source_file, av.open(source_file, "r") as container:
             video_stream = container.streams.video[0]
 
             if self.allow_threading:
@@ -624,40 +642,31 @@ class VideoReader(IMediaReader):
             else:
                 video_stream.thread_type = "NONE"
 
-            frame_counter = itertools.count()
-            for packet in container.demux(video_stream):
-                for frame, frame_number in zip(packet.decode(), frame_counter):
-                    if frame_number == next_frame_filter_frame:
-                        if frame.rotation:
-                            pts = frame.pts
-                            frame = av.VideoFrame().from_ndarray(
-                                rotate_image(frame.to_ndarray(format="bgr24"), frame.rotation),
-                                format="bgr24",
-                            )
-                            frame.pts = pts
+            for frame_number, frame in enumerate(container.decode(video_stream)):
+                if frame_number == next_frame_filter_frame:
+                    if frame.rotation:
+                        pts = frame.pts
+                        frame = av.VideoFrame().from_ndarray(
+                            rotate_image(frame.to_ndarray(format="bgr24"), frame.rotation),
+                            format="bgr24",
+                        )
+                        frame.pts = pts
 
-                        if self._frame_size is None:
-                            self._frame_size = (frame.width, frame.height)
+                    if self._frame_size is None:
+                        self._frame_size = (frame.width, frame.height)
 
-                        yield (frame, self._source_path[0], frame.pts)
+                    yield (frame, None)
 
-                        next_frame_filter_frame = next(frame_filter_iter, None)
+                    next_frame_filter_frame = next(frame_filter_iter, None)
 
-                    if next_frame_filter_frame is None:
-                        return
+                if next_frame_filter_frame is None:
+                    return
 
-    def __iter__(self) -> Iterator[tuple[av.VideoFrame, str, int]]:
+    def __iter__(self) -> Iterator[IMediaReader.VideoFrame]:
         return self.iterate_frames()
 
-    def get_progress(self, pos):
-        duration = self._get_duration()
-        return pos / duration if duration else None
-
-    def _read_av_container(self) -> av.container.InputContainer:
-        return _AvVideoReading().read_av_container(self._source_path[0])
-
     def _get_duration(self):
-        with self._read_av_container() as container:
+        with self._source_path.open("rb") as source_file, av.open(source_file, "r") as container:
             stream = container.streams.video[0]
 
             duration = None
@@ -673,7 +682,7 @@ class VideoReader(IMediaReader):
                     duration = duration_sec * tb_denominator
             return duration
 
-    def get_image_size(self, i):
+    def get_image_size(self, i) -> tuple[int, int]:
         if self._frame_size is not None:
             return self._frame_size
 
@@ -709,7 +718,7 @@ class VideoReader(IMediaReader):
 
 
 class ImageReaderWithManifest:
-    def __init__(self, manifest_path: str):
+    def __init__(self, manifest_path: Path):
         self._manifest = ImageManifestManager(manifest_path)
         self._manifest.init_index()
 
@@ -721,16 +730,15 @@ class ImageReaderWithManifest:
 class VideoReaderWithManifest:
     # TODO: merge this class with VideoReader
 
-    def __init__(self, manifest_path: str, source_path: str, *, allow_threading: bool = False):
+    def __init__(
+        self, manifest_path: Path, source_path: Openable, *, allow_threading: bool = False
+    ):
         self.source_path = source_path
         self.manifest = VideoManifestManager(manifest_path)
         if self.manifest.exists:
             self.manifest.init_index()
 
         self.allow_threading = allow_threading
-
-    def _read_av_container(self) -> av.container.InputContainer:
-        return _AvVideoReading().read_av_container(self.source_path)
 
     def _get_nearest_left_key_frame(self, frame_id: int) -> tuple[int, int]:
         nearest_left_keyframe_pos = bisect(
@@ -756,7 +764,7 @@ class VideoReaderWithManifest:
             next_frame_filter_frame
         )
 
-        with self._read_av_container() as container:
+        with self.source_path.open("rb") as source_file, av.open(source_file, "r") as container:
             video_stream = container.streams.video[0]
             if self.allow_threading:
                 video_stream.thread_type = "AUTO"
@@ -766,30 +774,29 @@ class VideoReaderWithManifest:
             container.seek(offset=start_decode_timestamp, stream=video_stream)
 
             frame_number = None
-            for packet in container.demux(video_stream):
-                for frame in packet.decode():
-                    if frame.pts < start_decode_timestamp:
-                        # for some reason seek stopped earlier than expected
-                        continue
+            for frame in container.decode(video_stream):
+                if frame.pts < start_decode_timestamp:
+                    # for some reason seek stopped earlier than expected
+                    continue
 
-                    if frame_number is None:
-                        frame_number = start_decode_frame_number
-                    else:
-                        frame_number += 1
+                if frame_number is None:
+                    frame_number = start_decode_frame_number
+                else:
+                    frame_number += 1
 
-                    if frame_number == next_frame_filter_frame:
-                        if frame.rotation:
-                            frame = av.VideoFrame().from_ndarray(
-                                rotate_image(frame.to_ndarray(format="bgr24"), frame.rotation),
-                                format="bgr24",
-                            )
+                if frame_number == next_frame_filter_frame:
+                    if frame.rotation:
+                        frame = av.VideoFrame().from_ndarray(
+                            rotate_image(frame.to_ndarray(format="bgr24"), frame.rotation),
+                            format="bgr24",
+                        )
 
-                        yield frame
+                    yield frame
 
-                        next_frame_filter_frame = next(frame_filter_iter, None)
+                    next_frame_filter_frame = next(frame_filter_iter, None)
 
-                    if next_frame_filter_frame is None:
-                        return
+                if next_frame_filter_frame is None:
+                    return
 
 
 class IChunkWriter(ABC):
@@ -807,7 +814,7 @@ class IChunkWriter(ABC):
         if isinstance(source_image, av.VideoFrame):
             image = source_image.to_image()
         elif isinstance(source_image, io.IOBase):
-            image, _, _ = load_image((source_image, None, None))
+            image, _ = load_image((source_image, None))
         elif isinstance(source_image, Image.Image):
             image = source_image
 
@@ -861,9 +868,9 @@ class ZipChunkWriter(IChunkWriter):
     IMAGE_EXT = "jpeg"
     POINT_CLOUD_EXT = "pcd"
 
-    def _write_pcd_file(self, image: str | io.BytesIO) -> tuple[io.BytesIO, str]:
+    def _write_pcd_file(self, image: str | Path | io.BytesIO) -> tuple[io.BytesIO, str]:
         with ExitStack() as es:
-            if isinstance(image, str):
+            if isinstance(image, (Path, str)):
                 image_buf = es.enter_context(open(image, "rb"))
             else:
                 image_buf = image
@@ -873,11 +880,11 @@ class ZipChunkWriter(IChunkWriter):
 
     def save_as_chunk(
         self,
-        images: Iterator[tuple[Image.Image | io.IOBase | str, str, str]],
+        images: Iterator[tuple[Image.Image | io.IOBase | str, str]],
         chunk_path: str | io.IOBase,
     ) -> None:
         with zipfile.ZipFile(chunk_path, "x") as zip_chunk:
-            for idx, (image, path, _) in enumerate(images):
+            for idx, (image, path) in enumerate(images):
                 ext = os.path.splitext(path)[1].replace(".", "")
 
                 if self._dimension == DimensionType.DIM_2D:
@@ -926,19 +933,22 @@ class ZipChunkWriter(IChunkWriter):
 class ZipCompressedChunkWriter(ZipChunkWriter):
     def save_as_chunk(
         self,
-        images: Iterator[tuple[Image.Image | io.IOBase | str, str, str]],
+        images: Iterator[tuple[Image.Image | io.IOBase | str, str | None]],
         chunk_path: str | io.IOBase,
         *,
         compress_frames: bool = True,
         zip_compress_level: int = 0,
     ) -> None:
         with zipfile.ZipFile(chunk_path, "x", compresslevel=zip_compress_level) as zip_chunk:
-            for idx, (image, path, _) in enumerate(images):
+            for idx, (image, path) in enumerate(images):
                 if self._dimension == DimensionType.DIM_2D:
                     if compress_frames:
                         try:
                             image_buf = self._compress_image(image, self._image_quality)
                         except Exception as ex:
+                            if path is None:
+                                raise
+
                             raise RuntimeError(
                                 f"Exception occurred during compression of image {os.path.basename(path)!r}"
                             ) from ex
@@ -950,6 +960,7 @@ class ZipCompressedChunkWriter(ZipChunkWriter):
                     if isinstance(image, io.BytesIO):
                         image_buf, extension = self._write_pcd_file(image)
                     else:
+                        assert path is not None
                         image_buf, extension = self._write_pcd_file(path)
 
                 arcname = "{:06d}.{}".format(idx, extension)
@@ -1017,11 +1028,11 @@ class Mpeg4ChunkWriter(IChunkWriter):
 
         return video_stream
 
-    FrameDescriptor = tuple[av.VideoFrame, Any, Any]
+    FrameDescriptor: TypeAlias = tuple[av.VideoFrame, Any]
 
     def _peek_first_frame(
         self, frame_iter: Iterator[FrameDescriptor]
-    ) -> tuple[Optional[FrameDescriptor], Iterator[FrameDescriptor]]:
+    ) -> tuple[FrameDescriptor | None, Iterator[FrameDescriptor]]:
         "Gets the first frame and returns the same full iterator"
 
         if not hasattr(frame_iter, "__next__"):
@@ -1053,7 +1064,7 @@ class Mpeg4ChunkWriter(IChunkWriter):
     def _encode_images(
         images, container: av.container.OutputContainer, stream: av.video.stream.VideoStream
     ):
-        for frame, _, _ in images:
+        for frame, _ in images:
             # let libav set the correct pts and time_base
             frame.pts = None
             frame.time_base = Fraction(0, 1)
@@ -1206,10 +1217,8 @@ class ValidateDimension:
         self.converted_files = []
 
     @staticmethod
-    def get_pcd_properties(
-        fp: str | io.RawIOBase, *, verify_version: bool = False
-    ) -> dict[str, str] | None:
-        return PcdReader.parse_pcd_header(fp, verify_version=verify_version)
+    def get_pcd_properties(pcd: Openable, *, verify_version: bool = False) -> dict[str, str]:
+        return PcdReader.parse_pcd_header(pcd, verify_version=verify_version)
 
     @staticmethod
     def convert_bin_to_pcd(path, delete_source=True):
@@ -1225,7 +1234,7 @@ class ValidateDimension:
 
     def pcd_operation(self, file_path: str, dataset_root: str) -> str | None:
         try:
-            self.get_pcd_properties(file_path, verify_version=True)
+            self.get_pcd_properties(Path(file_path), verify_version=True)
             return os.path.relpath(file_path, dataset_root)
         except InvalidPcdError as e:
             raise ValidationError(f"Could not read pcd file '{os.path.basename(file_path)}': {e}")
@@ -1259,7 +1268,7 @@ class ValidateDimension:
         if self.pcd_files:
             self.dimension = DimensionType.DIM_3D
 
-    def detect_dimension_for_paths(self, paths: Sequence[str]) -> DimensionType:
+    def detect_dimension_for_paths(self, paths: Sequence[PurePath]) -> DimensionType:
         detected_dimensions = detect_media_dimension(paths)
         if (
             _MediaDimension.dim_2d in detected_dimensions

@@ -6,6 +6,7 @@
 
 import { defaultTaskSpec } from '../../support/default-specs';
 import { createDummyAWSBucket } from '../../support/dummy-data';
+import { getBulkActionsMenu, assignAllTo, selectAll } from '../../support/utils.cy';
 
 context('Bulk actions in UI', () => {
     const taskName = 'task_bulk_actions';
@@ -54,22 +55,9 @@ context('Bulk actions in UI', () => {
         ...projectSpec,
         name: stringID(i, projectName),
     });
-    function selectAll() {
-        cy.get('.cvat-bulk-wrapper').should('exist').and('be.visible');
-        cy.contains('Select all').click();
-    }
-    function getBulkActionsMenu() {
-        selectAll();
-        cy.get('.cvat-item-selected').first().within(() => {
-            cy.get('.cvat-actions-menu-button').click();
-        });
-        return cy.get('.ant-dropdown');
-    }
 
     function assignToAdmin() {
-        cy.contains(`Assignee (${numberOfObjects})`).click();
-        cy.get('.cvat-user-search-field').type('admin', { delay: 0 }); // all at once
-        return cy.get('.cvat-user-search-field').type('{enter}');
+        assignAllTo('admin', numberOfObjects);
     }
 
     before(() => {
@@ -127,6 +115,7 @@ context('Bulk actions in UI', () => {
             });
 
             it('Bulk-change assignees', () => {
+                selectAll();
                 getBulkActionsMenu().within(() => {
                     assignToAdmin();
                 });
@@ -148,6 +137,7 @@ context('Bulk actions in UI', () => {
             });
 
             it('Bulk-change assignees', () => {
+                selectAll();
                 getBulkActionsMenu().within(() => {
                     assignToAdmin();
                 });
@@ -159,6 +149,7 @@ context('Bulk actions in UI', () => {
             });
 
             it('Bulk-change state', () => {
+                selectAll();
                 getBulkActionsMenu().within(() => {
                     cy.contains(`State (${numberOfObjects})`).click();
                     cy.get('.cvat-job-item-state').click();
@@ -180,6 +171,7 @@ context('Bulk actions in UI', () => {
             cy.openTaskById(taskTwoJobs.ID);
         });
         it('Bulk-export job annotations', () => {
+            selectAll();
             getBulkActionsMenu().within(() => {
                 cy.contains(`Export annotations (${numberOfObjects})`)
                     .should('be.visible')
@@ -206,6 +198,9 @@ context('Bulk actions in UI', () => {
         });
 
         it('Delete all tasks, ensure deletion', () => {
+            cy.intercept('DELETE', '/api/tasks/**').as('deleteTask');
+
+            selectAll();
             getBulkActionsMenu().within(() => {
                 cy.contains(`Delete (${numberOfObjects})`).click();
             });
@@ -213,11 +208,15 @@ context('Bulk actions in UI', () => {
             cy.get('.cvat-modal-confirm-delete-task')
                 .should('be.visible').within(() => {
                     cy.contains(`Delete ${numberOfObjects} selected tasks`);
-                    cy.contains('Delete selected')
-                        .should('be.visible')
-                        .click();
                 });
-            cy.get('.cvat-bulk-progress-wrapper').should('be.visible');
+            cy.contains('Delete selected')
+                .should('be.visible')
+                .click();
+            cy.wait('@deleteTask').then(() => {
+                cy.get('.cvat-bulk-progress-wrapper').should('be.visible');
+            });
+            cy.wait('@deleteTask');
+
             cy.get('.cvat-tasks-list-item').each(($el) => {
                 cy.wrap($el)
                     .invoke('attr', 'style')
@@ -234,6 +233,7 @@ context('Bulk actions in UI', () => {
             cy.goToCloudStoragesPage();
         });
         it('Delete all CS, ensure deleted ', () => {
+            selectAll();
             getBulkActionsMenu().within(() => {
                 cy.contains(`Delete (${numberOfObjects})`).click();
             });

@@ -13,7 +13,7 @@ from contextlib import suppress
 from copy import deepcopy
 from functools import cached_property, lru_cache, partial
 from io import StringIO
-from typing import Any, ClassVar, TypeVar, Union, cast
+from typing import Any, ClassVar, TypeAlias, TypeVar, cast
 
 import datumaro as dm
 import datumaro.components.annotations.matcher
@@ -39,7 +39,6 @@ from cvat.apps.dataset_manager.bindings import (
 )
 from cvat.apps.dataset_manager.formats.registry import dm_env
 from cvat.apps.dataset_manager.task import JobAnnotation
-from cvat.apps.engine import serializers as engine_serializers
 from cvat.apps.engine.filters import JsonLogicFilter
 from cvat.apps.engine.frame_provider import TaskFrameProvider
 from cvat.apps.engine.model_utils import bulk_create
@@ -54,7 +53,6 @@ from cvat.apps.engine.models import (
     StageChoice,
     StateChoice,
     Task,
-    User,
     ValidationMode,
 )
 from cvat.apps.engine.utils import take_by
@@ -934,9 +932,7 @@ class _MemoizingAnnotationConverterFactory:
     def _make_key(self, dm_ann: dm.Annotation) -> Hashable:
         return id(dm_ann)
 
-    def get_source_ann(
-        self, dm_ann: dm.Annotation
-    ) -> Union[CommonData.Tag, CommonData.LabeledShape]:
+    def get_source_ann(self, dm_ann: dm.Annotation) -> CommonData.Tag | CommonData.LabeledShape:
         return self._annotation_mapping[self._make_key(dm_ann)]
 
     def clear(self):
@@ -971,11 +967,11 @@ class _MemoizingAnnotationConverter(CvatToDmAnnotationConverter):
 
 _ShapeT1 = TypeVar("_ShapeT1")
 _ShapeT2 = TypeVar("_ShapeT2")
-ShapeSimilarityFunction = Callable[
+ShapeSimilarityFunction: TypeAlias = Callable[
     [_ShapeT1, _ShapeT2], float
 ]  # (shape1, shape2) -> [0; 1], returns 0 for mismatches, 1 for matches
-LabelEqualityFunction = Callable[[_ShapeT1, _ShapeT2], bool]
-SegmentMatchingResult = tuple[
+LabelEqualityFunction: TypeAlias = Callable[[_ShapeT1, _ShapeT2], bool]
+SegmentMatchingResult: TypeAlias = tuple[
     list[tuple[_ShapeT1, _ShapeT2]],  # matches
     list[tuple[_ShapeT1, _ShapeT2]],  # mismatches
     list[_ShapeT1],  # a unmatched
@@ -3223,98 +3219,3 @@ class ProjectQualityCalculator:
     def get_quality_params(self, project: Project) -> ComparisonParameters:
         quality_settings = QualitySettingsManager().get_project_settings(project)
         return ComparisonParameters.from_settings(quality_settings, inherited=False)
-
-
-def prepare_report_for_downloading(db_report: models.QualityReport, *, host: str) -> str:
-    # Decorate the report for better usability and readability:
-    # - add conflicting annotation links like:
-    # <host>/tasks/62/jobs/82?frame=250&type=shape&serverID=33741
-    # - convert some fractions to percents
-    # - add common report info
-
-    project_id = None
-    task_id = None
-    job_id = None
-    jobs_to_tasks: dict[int, int] = {}
-    if db_report.project:
-        project_id = db_report.project.id
-
-        jobs = Job.objects.filter(segment__task__project__id=project_id).all()
-        jobs_to_tasks.update((j.id, j.segment.task.id) for j in jobs)
-    elif db_report.task:
-        project_id = getattr(db_report.task.project, "id", None)
-        task_id = db_report.task.id
-
-        jobs = Job.objects.filter(segment__task__id=task_id).all()
-        jobs_to_tasks.update((j.id, task_id) for j in jobs)
-    elif db_report.job:
-        project_id = getattr(db_report.get_task().project, "id", None)
-        task_id = db_report.get_task().id
-        job_id = db_report.job.id
-
-        jobs_to_tasks[db_report.job.id] = task_id
-        jobs_to_tasks[db_report.get_task().gt_job.id] = task_id
-    else:
-        assert False
-
-    # Add ids for the hierarchy objects, don't add empty ids
-    def _serialize_assignee(assignee: User | None) -> dict | None:
-        if not db_report.assignee:
-            return None
-
-        reported_keys = ["id", "username", "first_name", "last_name"]
-        assert set(reported_keys).issubset(engine_serializers.BasicUserSerializer.Meta.fields)
-        # check that only safe fields are reported
-
-        return {k: getattr(assignee, k) for k in reported_keys}
-
-    serialized_data = dict(
-        id=db_report.id,
-        **dict(job_id=db_report.job.id) if job_id else {},
-        **dict(task_id=task_id) if task_id else {},
-        **dict(project_id=project_id) if project_id else {},
-        **dict(parent_id=db_report.parent.id) if db_report.parent else {},
-        created_date=str(db_report.created_date),
-        target_last_updated=str(db_report.target_last_updated),
-        **dict(gt_last_updated=str(db_report.gt_last_updated)) if db_report.gt_last_updated else {},
-        assignee=_serialize_assignee(db_report.assignee),
-    )
-
-    comparison_report = ComparisonReport.from_json(db_report.get_report_data())
-    serialized_data.update(comparison_report.to_dict())
-
-    if db_report.project:
-        # project reports should not have per-frame statistics, it's too detailed for this level
-        serialized_data["comparison_summary"].pop("frames")
-        serialized_data.pop("frame_results")
-    else:
-        for frame_result in serialized_data["frame_results"].values():
-            for conflict in frame_result["conflicts"]:
-                for ann_id in conflict["annotation_ids"]:
-                    task_id = jobs_to_tasks[ann_id["job_id"]]
-                    ann_id["url"] = (
-                        f"{host}tasks/{task_id}/jobs/{ann_id['job_id']}"
-                        f"?frame={conflict['frame_id']}"
-                        f"&type={ann_id['type']}"
-                        f"&serverID={ann_id['obj_id']}"
-                    )
-
-        # String keys are needed for json dumping
-        serialized_data["frame_results"] = {
-            str(k): v for k, v in serialized_data["frame_results"].items()
-        }
-
-    if task_stats := serialized_data["comparison_summary"].get("tasks", {}):
-        for k in ("all", "custom", "not_configured", "excluded"):
-            task_stats[k] = sorted(task_stats[k])
-
-    if job_stats := serialized_data["comparison_summary"].get("jobs", {}):
-        for k in ("all", "excluded", "not_checkable"):
-            job_stats[k] = sorted(job_stats[k])
-
-    # Add the percent representation for better human readability
-    serialized_data["comparison_summary"]["frame_share_percent"] = (
-        serialized_data["comparison_summary"]["frame_share"] * 100
-    )
-
-    return dump_json(serialized_data, indent=True, append_newline=True).decode()
