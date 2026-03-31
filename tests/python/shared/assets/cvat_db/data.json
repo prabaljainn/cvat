@@ -6392,7 +6392,7 @@
   "pk": 1,
   "fields": {
     "data": 6,
-    "path": "/home/django/data/data/6/raw/test_pointcloud_pcd/related_images/000001_pcd/000001.png",
+    "path": "test_pointcloud_pcd/related_images/000001_pcd/000001.png",
     "images": [
       360
     ]
@@ -16870,6 +16870,25 @@
     "specific_attributes": "endpoint_url=http%3A%2F%2Fminio%3A9777",
     "description": "Bucket with wrong endpoint for testing purposes",
     "organization": 2
+  }
+},
+{
+  "model": "engine.cloudstorage",
+  "pk": 5,
+  "fields": {
+    "created_date": "2026-02-11T16:29:48.000Z",
+    "updated_date": "2026-02-11T16:29:48.000Z",
+    "provider_type": "AWS_S3_BUCKET",
+    "resource": "backingcs",
+    "display_name": "Backing CS",
+    "owner": [
+      "admin1"
+    ],
+    "credentials": "minio_access_key minio_secret_key",
+    "credentials_type": "KEY_SECRET_KEY_PAIR",
+    "specific_attributes": "endpoint_url=http%3A%2F%2Fminio%3A9000",
+    "description": "Bucket to be used as backing cloud storage for tasks",
+    "organization": null
   }
 },
 {
