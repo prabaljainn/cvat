@@ -1,0 +1,146 @@
+# Custom workflow for building and pushing CVAT images to GHCR
+# This file is NOT part of upstream CVAT - safe from sync conflicts
+#
+# Tagging strategy:
+#   - Every build gets: latest, build-<run_number> (auto-incrementing), and sha-<commit>
+#   - Manual runs can also specify an extra custom tag (e.g. staging, v1.0.0)
+#   - build-<run_number> gives you unique incremental tags: build-1, build-2, build-3, ...
+name: Custom Build & Push to GHCR
+
+on:
+  workflow_dispatch:
+    inputs:
+      extra_tag:
+        description: 'Optional extra tag (e.g. staging, v1.0.0). Leave empty to skip.'
+        required: false
+        default: ''
+      build_server:
+        description: 'Build cvat-server image'
+        type: boolean
+        default: true
+      build_ui:
+        description: 'Build cvat-ui image'
+        type: boolean
+        default: true
+  push:
+    branches:
+      - prabal-is-testing
+    paths-ignore:
+      - '**.md'
+      - 'site/**'
+
+env:
+  REGISTRY: ghcr.io
+  SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/cvat-server
+  UI_IMAGE: ghcr.io/${{ github.repository_owner }}/cvat-ui
+
+jobs:
+  build-and-push-server:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.build_server == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: tags
+        run: |
+          TAGS="${{ env.SERVER_IMAGE }}:latest"
+          TAGS="${TAGS},${{ env.SERVER_IMAGE }}:build-${{ github.run_number }}"
+          TAGS="${TAGS},${{ env.SERVER_IMAGE }}:sha-${GITHUB_SHA::7}"
+          if [ -n "${{ github.event.inputs.extra_tag }}" ]; then
+            TAGS="${TAGS},${{ env.SERVER_IMAGE }}:${{ github.event.inputs.extra_tag }}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push cvat-server
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=cvat-server
+          cache-to: type=gha,mode=max,scope=cvat-server
+          build-args: |
+            CLAM_AV=no
+
+      - name: Summary
+        run: |
+          echo "### cvat-server pushed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | Image |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`latest\` | \`${{ env.SERVER_IMAGE }}:latest\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`build-${{ github.run_number }}\` | \`${{ env.SERVER_IMAGE }}:build-${{ github.run_number }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`sha-${GITHUB_SHA::7}\` | \`${{ env.SERVER_IMAGE }}:sha-${GITHUB_SHA::7}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-push-ui:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.build_ui == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: tags
+        run: |
+          TAGS="${{ env.UI_IMAGE }}:latest"
+          TAGS="${TAGS},${{ env.UI_IMAGE }}:build-${{ github.run_number }}"
+          TAGS="${TAGS},${{ env.UI_IMAGE }}:sha-${GITHUB_SHA::7}"
+          if [ -n "${{ github.event.inputs.extra_tag }}" ]; then
+            TAGS="${TAGS},${{ env.UI_IMAGE }}:${{ github.event.inputs.extra_tag }}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push cvat-ui
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ui
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=cvat-ui
+          cache-to: type=gha,mode=max,scope=cvat-ui
+
+      - name: Summary
+        run: |
+          echo "### cvat-ui pushed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | Image |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`latest\` | \`${{ env.UI_IMAGE }}:latest\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`build-${{ github.run_number }}\` | \`${{ env.UI_IMAGE }}:build-${{ github.run_number }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| \`sha-${GITHUB_SHA::7}\` | \`${{ env.UI_IMAGE }}:sha-${GITHUB_SHA::7}\` |" >> "$GITHUB_STEP_SUMMARY"
