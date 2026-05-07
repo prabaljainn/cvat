@@ -79,7 +79,7 @@ services:
   cvat_server:
     labels:
       traefik.http.routers.cvat.middlewares: "ip-allowlist@file"
-    image: prabaljainn/cvat-server:latest
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile
@@ -115,7 +115,7 @@ services:
   cvat_ui:
     labels:
       traefik.http.routers.cvat-ui.middlewares: "ip-allowlist@file"
-    image: prabaljainn/cvat-ui:latest
+    image: ghcr.io/prabaljainn/cvat-ui:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile.ui
@@ -128,7 +128,7 @@ services:
 
   # All workers use your custom build too
   cvat_worker_import:
-    image: prabaljainn/cvat-server:latest
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile
@@ -142,7 +142,7 @@ services:
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_export:
-    image: prabaljainn/cvat-server:latest
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile
@@ -156,7 +156,7 @@ services:
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_annotation:
-    image: prabaljainn/cvat-server:latest
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile
@@ -170,7 +170,7 @@ services:
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_chunks:
-    image: prabaljainn/cvat-server:latest
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
     # build:
     #   context: .
     #   dockerfile: Dockerfile

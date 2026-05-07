@@ -2,6 +2,7 @@ services:
   cvat_server:
     environment:
       DJANGO_SETTINGS_MODULE: cvat.settings.email_settings
+      CVAT_HOST: ${CVAT_HOST}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USERNAME: ${SMTP_USERNAME}
@@ -9,10 +10,25 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
       SMTP_USE_TLS: ${SMTP_USE_TLS}
       SMTP_USE_SSL: ${SMTP_USE_SSL}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+        ./backend_entrypoint.sh init
+        python -c "
+        import os, django
+        django.setup()
+        from django.contrib.sites.models import Site
+        domain = os.environ.get('CVAT_HOST', 'localhost')
+        Site.objects.update_or_create(pk=1, defaults={'domain': domain, 'name': 'CVAT'})
+        print('[site-init] Site domain set to:', Site.objects.get(pk=1).domain)
+        "
+        exec ./backend_entrypoint.sh run server
 
   cvat_worker_utils:
     environment:
       DJANGO_SETTINGS_MODULE: cvat.settings.email_settings
+      CVAT_HOST: ${CVAT_HOST}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USERNAME: ${SMTP_USERNAME}
