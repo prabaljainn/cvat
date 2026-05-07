@@ -372,6 +372,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
                         zOrder: zLayer || 0,
                     },
                     continue: continueDraw,
+                    simplifyPoly: data?.simplifyPoly || false,
                     duration,
                 },
             });
@@ -769,6 +770,13 @@ export class CanvasViewImpl implements CanvasView, Listener {
         this.controller.geometry = dragged;
         this.geometry = dragged;
         this.moveCanvas();
+
+        this.canvas.dispatchEvent(
+            new CustomEvent('canvas.zoom', {
+                bubbles: false,
+                cancelable: true,
+            }),
+        );
     };
 
     private moveCanvas(): void {
@@ -1468,7 +1476,8 @@ export class CanvasViewImpl implements CanvasView, Listener {
                     resized = true;
                     onResizing();
 
-                    if (this.configuration.pointSnap &&
+                    if (this.configuration.snapToPoint &&
+                        !this.ctrlPressed &&
                         ['polygon', 'polyline', 'points'].includes(state.shapeType) &&
                         draggedPointIndex !== null &&
                         draggedPointIndex >= 0) {
@@ -1778,7 +1787,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
         this.canvas.appendChild(this.attachmentBoard);
 
         // Setup API handlers
-        this.autoborderHandler = new AutoborderHandlerImpl(this.content);
+        this.autoborderHandler = new AutoborderHandlerImpl(this.content, () => this.ctrlPressed);
         this.drawHandler = new DrawHandlerImpl(
             this.onDrawDone,
             this.adoptedContent,
@@ -1787,6 +1796,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
             this.geometry,
             this.configuration,
             () => this.drawnStates,
+            () => this.ctrlPressed,
         );
         this.masksHandler = new MasksHandlerImpl(
             this.onDrawDone,

@@ -23,7 +23,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.storage import storages
 from django.db import IntegrityError, transaction
-from django.db.models.query import Prefetch
+from django.db.models.query import Prefetch, prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFound
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -170,7 +170,7 @@ _RETRY_AFTER_TIMEOUT = 10
 @extend_schema(tags=['server'])
 class ServerViewSet(viewsets.ViewSet):
     serializer_class = None
-    iam_organization_field = None
+    iam_supports_organization_params = False
     iam_permission_class = ServerPermission
 
     # To get nice documentation about ServerViewSet actions it is necessary
@@ -329,7 +329,7 @@ class ProjectViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
     ordering_fields = list(filter_fields)
     ordering = "-id"
     lookup_fields = {'owner': 'owner__username', 'assignee': 'assignee__username'}
-    iam_organization_field = 'organization'
+    iam_supports_organization_params = True
     iam_permission_class = ProjectPermission
 
     def get_serializer_class(self):
@@ -837,18 +837,7 @@ class TaskViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
     mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin,
     PartialUpdateModelMixin, UploadMixin, DatasetMixin, BackupMixin
 ):
-    queryset = Task.objects.select_related(
-        'data',
-        'assignee',
-        'owner',
-        'target_storage',
-        'source_storage',
-        'annotation_guide',
-    ).prefetch_related(
-        # avoid loading heavy data in select related
-        # this reduces performance of the COUNT request in the list endpoint
-        'data__validation_layout',
-    )
+    queryset = Task.objects
 
     lookup_fields = {
         'project_name': 'project__name',
@@ -861,17 +850,19 @@ class TaskViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
         'project_name', 'name', 'owner', 'status', 'assignee',
         'subset', 'mode', 'dimension', 'tracker_link', 'validation_mode'
     )
-    filter_fields = list(search_fields) + ['id', 'project_id', 'updated_date']
+    filter_fields = list(search_fields) + [
+        'id', 'project_id', 'updated_date', 'media_type'
+    ]
     filter_description = textwrap.dedent("""
 
         There are few examples for complex filtering tasks:\n
             - Get all tasks from 1,2,3 projects - { "and" : [{ "in" : [{ "var" : "project_id" }, [1, 2, 3]]}]}\n
             - Get all completed tasks from 1 project - { "and": [{ "==": [{ "var" : "status" }, "completed"]}, { "==" : [{ "var" : "project_id"}, 1]}]}\n
     """)
-    simple_filters = list(search_fields) + ['project_id']
+    simple_filters = list(set(filter_fields) - {'id', 'updated_date'})
     ordering_fields = list(filter_fields)
     ordering = "-id"
-    iam_organization_field = 'organization'
+    iam_supports_organization_params = True
     iam_permission_class = TaskPermission
 
     def get_serializer_class(self):
@@ -886,13 +877,22 @@ class TaskViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
         if self.action == 'list':
             perm = TaskPermission.create_scope_list(self.request)
             queryset = perm.filter(queryset)
+            queryset = queryset.select_related('assignee', 'owner')
             # with_job_summary() is optimized in the serializer
-        elif self.action == 'preview':
-            queryset = Task.objects.select_related('data')
         elif self.action == 'validation_layout':
             queryset = Task.objects.select_related('data', 'data__validation_layout')
-        else:
-            queryset = queryset.with_job_summary()
+        elif self.action not in ('metadata', 'annotations'):
+            queryset = queryset.select_related('data')
+
+            if self.action in ('create', 'retrieve', 'update', 'partial_update', 'destroy'):
+                queryset = queryset.select_related(
+                    'target_storage',
+                    'source_storage',
+                    'annotation_guide',
+                    'assignee',
+                    'owner',
+                )
+                queryset = queryset.with_job_summary()
 
         return queryset
 
@@ -1460,13 +1460,31 @@ class TaskViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
     @action(detail=True, methods=['GET', 'PATCH'], serializer_class=DataMetaReadSerializer,
         url_path='data/meta')
     def metadata(self, request: ExtendedRequest, pk: int):
-        self.get_object() #force to call check_object_permissions
-        db_task = models.Task.objects.prefetch_related(
-            'segment_set',
-            Prefetch('data', queryset=models.Data.objects.select_related('video').prefetch_related(
-                Prefetch('images', queryset=models.Image.objects.prefetch_related('related_files').order_by('frame'))
-            ))
-        ).get(pk=pk)
+        db_task = self.get_object() #force to call check_object_permissions
+
+        def prefetch():
+            data_queryset = (
+                models.Data.objects
+                .select_related("validation_layout", "video")
+                .prefetch_related(
+                    Prefetch(
+                        'images',
+                        queryset=(
+                            models.Image.objects
+                            .prefetch_related('related_files')
+                            .order_by('frame')
+                        )
+                    )
+                )
+            )
+
+            prefetch_related_objects(
+                [db_task],
+                "segment_set",
+                Prefetch("data", queryset=data_queryset)
+            )
+
+        prefetch()
 
         if request.method == 'PATCH':
             serializer = DataMetaWriteSerializer(instance=db_task.data, data=request.data)
@@ -1654,31 +1672,26 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
     mixins.RetrieveModelMixin, PartialUpdateModelMixin, mixins.DestroyModelMixin,
     UploadMixin, DatasetMixin
 ):
-    queryset = (
-        Job.objects
-        .select_related(
-            'assignee',
-            'segment__task',
-            'segment__task__project',
-        )
-        .prefetch_related(
-            'segment__task__data',
-            'segment__task__annotation_guide',
-            'segment__task__project__annotation_guide',
-        )
+    queryset = Job.objects.select_related(
+        # prefetch data for permission checks
+        'segment__task',
+        'segment__task__project',
     )
 
-    iam_organization_field = 'segment__task__organization'
+    iam_supports_organization_params = True
     iam_permission_class = JobPermission
     search_fields = ('task_name', 'project_name', 'assignee', 'state', 'stage')
     filter_fields = list(search_fields) + [
-        'id', 'task_id', 'project_id', 'updated_date', 'dimension', 'type', 'parent_job_id',
+        'id', 'task_id', 'project_id', 'updated_date', 'type', 'parent_job_id',
+        'dimension', 'media_type', "mode",
     ]
     simple_filters = list(set(filter_fields) - {'id', 'updated_date'})
     ordering_fields = list(filter_fields)
     ordering = "-id"
     lookup_fields = {
         'dimension': 'segment__task__dimension',
+        'media_type': 'segment__task__media_type',
+        'mode': 'segment__task__mode',
         'task_id': 'segment__task_id',
         'project_id': 'segment__task__project_id',
         'task_name': 'segment__task__name',
@@ -1692,9 +1705,18 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
         if self.action == 'list':
             perm = JobPermission.create_scope_list(self.request)
             queryset = perm.filter(queryset)
+            queryset = queryset.select_related('assignee')
             # with_* optimized in JobReadListSerializer
-        else:
-            queryset = queryset.with_issue_counts().with_child_jobs_counts()
+        elif self.action not in ('annotations', 'metadata'):
+            queryset = queryset.select_related('segment__task__data')
+
+            if self.action in ('create', 'retrieve', 'update', 'partial_update', 'destroy'):
+                queryset = queryset.select_related(
+                    'assignee',
+                    'segment__task__annotation_guide',
+                    'segment__task__project__annotation_guide',
+                )
+                queryset = queryset.with_issue_counts().with_child_jobs_counts()
 
         return queryset
 
@@ -1945,18 +1967,13 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
     @action(detail=True, methods=['GET', 'PATCH'], serializer_class=DataMetaReadSerializer,
         url_path='data/meta')
     def metadata(self, request: ExtendedRequest, pk: int):
-        self.get_object() # force call of check_object_permissions()
+        db_job = self.get_object() # force call of check_object_permissions()
 
-        db_job = models.Job.objects.select_related(
-            'segment',
-            'segment__task',
-        ).prefetch_related(
-            Prefetch(
-                'segment__task__data',
-                queryset=models.Data.objects.select_related(
-                    'video',
-                    'validation_layout',
-                ).prefetch_related(
+        def prefetch():
+            data_queryset = (
+                models.Data.objects
+                .select_related("validation_layout", "video")
+                .prefetch_related(
                     Prefetch(
                         'images',
                         queryset=(
@@ -1967,7 +1984,13 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
                     )
                 )
             )
-        ).get(pk=pk)
+
+            prefetch_related_objects(
+                [db_job],
+                Prefetch("segment__task__data", queryset=data_queryset)
+            )
+
+        prefetch()
 
         if request.method == 'PATCH':
             serializer = JobDataMetaWriteSerializer(instance=db_job, data=request.data)
@@ -2141,7 +2164,7 @@ class IssueViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
         'job__segment__task', 'owner', 'assignee', 'job'
     ).all()
 
-    iam_organization_field = 'job__segment__task__organization'
+    iam_supports_organization_params = True
     iam_permission_class = IssuePermission
     search_fields = ('owner', 'assignee')
     filter_fields = list(search_fields) + ['id', 'job_id', 'task_id', 'resolved', 'frame_id']
@@ -2213,7 +2236,7 @@ class CommentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
         'issue', 'issue__job', 'owner'
     ).all()
 
-    iam_organization_field = 'issue__job__segment__task__organization'
+    iam_supports_organization_params = True
     iam_permission_class = CommentPermission
     search_fields = ('owner',)
     filter_fields = list(search_fields) + ['id', 'issue_id', 'frame_id', 'job_id']
@@ -2298,7 +2321,7 @@ class LabelViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
         'project__organization'
     ).all()
 
-    iam_organization_field = ('task__organization', 'project__organization')
+    iam_supports_organization_params = True
     iam_permission_class = LabelPermission
 
     search_fields = ('name', 'parent')
@@ -2352,6 +2375,7 @@ class LabelViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
                 # )
                 self.check_object_permissions(self.request, instance)
                 queryset = instance.get_labels(prefetch=True)
+                queryset = LabelPermission.add_org_filter_proof(queryset)
             else:
                 # In other cases permissions are checked already
                 queryset = super().get_queryset()
@@ -2443,7 +2467,7 @@ class LabelViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
 class UserViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
     mixins.RetrieveModelMixin, PartialUpdateModelMixin, mixins.DestroyModelMixin):
     queryset = User.objects.prefetch_related('groups').all()
-    iam_organization_field = 'memberships__organization'
+    iam_supports_organization_params = True
     iam_permission_class = UserPermission
 
     search_fields = ('username', 'first_name', 'last_name')
@@ -2535,7 +2559,7 @@ class CloudStorageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
     ordering_fields = list(filter_fields)
     ordering = "-id"
     lookup_fields = {'owner': 'owner__username', 'name': 'display_name'}
-    iam_organization_field = 'organization'
+    iam_supports_organization_params = True
     iam_permission_class = CloudStoragePermission
 
     # Multipart support is necessary here, as CloudStorageWriteSerializer
@@ -2773,6 +2797,7 @@ class AssetsViewSet(
     parser_classes = [MultiPartParser]
     search_fields = ()
     ordering = "uuid"
+    iam_supports_organization_params = False
     iam_permission_class = GuideAssetPermission
 
     def check_object_permissions(self, request: ExtendedRequest, obj):
@@ -2858,7 +2883,7 @@ class AnnotationGuidesViewSet(
     ).prefetch_related('assets').all()
     search_fields = ()
     ordering = "-id"
-    iam_organization_field = None
+    iam_supports_organization_params = False
     iam_permission_class = AnnotationGuidePermission
 
     def _update_related_assets(self, request: ExtendedRequest, guide: AnnotationGuide):

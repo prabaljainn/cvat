@@ -29,6 +29,7 @@ from django.core.exceptions import ImproperlyConfigured
 from logstash_async.constants import constants as logstash_async_constants
 
 from cvat import __version__
+from cvat.apps.iam.password_validation import DEFAULT_MIN_PASSWORD_LENGTH
 
 # Build paths inside the project like this: BASE_DIR / ...
 BASE_DIR = Path(__file__).parents[2]
@@ -172,6 +173,10 @@ REST_AUTH = {
     "REGISTER_SERIALIZER": "cvat.apps.iam.serializers.RegisterSerializerEx",
     "LOGIN_SERIALIZER": "cvat.apps.iam.serializers.LoginSerializerEx",
     "PASSWORD_RESET_SERIALIZER": "cvat.apps.iam.serializers.PasswordResetSerializerEx",
+    # Define password-setting serializers explicitly so CVAT controls length limits
+    # instead of inheriting hardcoded third-party defaults.
+    "PASSWORD_RESET_CONFIRM_SERIALIZER": "cvat.apps.iam.serializers.PasswordResetConfirmSerializerEx",
+    "PASSWORD_CHANGE_SERIALIZER": "cvat.apps.iam.serializers.PasswordChangeSerializerEx",
     "OLD_PASSWORD_FIELD_ENABLED": True,
 }
 
@@ -401,12 +406,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": DEFAULT_MIN_PASSWORD_LENGTH},
     },
     {
         "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+    {
+        "NAME": "cvat.apps.iam.password_validation.MaximumLengthPasswordValidator",
     },
 ]
 
@@ -665,6 +674,7 @@ SPECTACULAR_SETTINGS = {
         "JobStatus": "cvat.apps.engine.models.StatusChoice",
         "JobStage": "cvat.apps.engine.models.StageChoice",
         "JobType": "cvat.apps.engine.models.JobType",
+        "TaskMode": "cvat.apps.engine.models.TaskMode",
         "StorageType": "cvat.apps.engine.models.StorageChoice",
         "SortingMethod": "cvat.apps.engine.models.SortingMethod",
         "WebhookType": "cvat.apps.webhooks.models.WebhookTypeChoice",
@@ -747,7 +757,7 @@ ASSET_SUPPORTED_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif", "
 ASSET_MAX_IMAGE_SIZE = 1920
 ASSET_MAX_COUNT_PER_GUIDE = 150
 
-SMOKESCREEN_ENABLED = True
+SMOKESCREEN_ENABLED = to_bool(os.getenv("SMOKESCREEN_ENABLED", True))
 
 # By default, email backend is django.core.mail.backends.smtp.EmailBackend
 # But it won't work without additional configuration, so we set it to None

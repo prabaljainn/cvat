@@ -837,7 +837,6 @@ class TestGetGtJobData:
             admin_user,
             spec={
                 "name": "test complex frame setup",
-                "labels": [{"name": "cat"}],
             },
             data={
                 "image_quality": 75,
@@ -1081,6 +1080,9 @@ class TestJobsListFilters(CollectionSimpleFilterTestBase):
         "field",
         (
             "assignee",
+            "dimension",
+            "media_type",
+            "mode",
             "state",
             "stage",
             "task_id",

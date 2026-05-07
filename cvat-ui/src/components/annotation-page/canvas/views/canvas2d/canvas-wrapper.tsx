@@ -48,6 +48,7 @@ import {
     canvasErrorOccurred,
     updateEditedStateAsync,
     collapseObjectItems,
+    AnnotationSource,
 } from 'actions/annotation-actions';
 import {
     switchGrid,
@@ -57,6 +58,7 @@ import {
     changeContrastLevel,
     changeSaturationLevel,
     switchAutomaticBordering,
+    switchSnapToPoint,
 } from 'actions/settings-actions';
 import { reviewActions } from 'actions/review-actions';
 
@@ -112,7 +114,7 @@ interface StateToProps {
     maxZLayer: number;
     curZLayer: number;
     automaticBordering: boolean;
-    pointSnap: boolean;
+    snapToPoint: boolean;
     adaptiveZoom: boolean;
     intelligentPolygonCrop: boolean;
     switchableAutomaticBordering: boolean;
@@ -131,7 +133,7 @@ interface DispatchToProps {
     onResetCanvas: () => void;
     updateActiveControl: (activeControl: ActiveControl) => void;
     onUpdateAnnotations(states: ObjectState[]): void;
-    onCreateAnnotations(states: ObjectState[]): void;
+    onCreateAnnotations(states: ObjectState[], source?: AnnotationSource): void;
     onMergeAnnotations(states: ObjectState[]): void;
     onSplitAnnotations(state: ObjectState): void;
     onGroupAnnotations(states: ObjectState[]): void;
@@ -148,6 +150,7 @@ interface DispatchToProps {
     onChangeGridColor(color: GridColor): void;
     onSwitchGrid(enabled: boolean): void;
     onSwitchAutomaticBordering(enabled: boolean): void;
+    onSwitchSnapToPoint(enabled: boolean): void;
     onFetchAnnotation(): void;
     onGetDataFailed(error: Error): void;
     onCanvasErrorOccurred(error: Error): void;
@@ -195,7 +198,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
                 showAllInterpolationTracks,
                 showTagsOnFrame,
                 automaticBordering,
-                pointSnap,
+                snapToPoint,
                 adaptiveZoom,
                 intelligentPolygonCrop,
                 textFontSize,
@@ -253,7 +256,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         minZLayer,
         maxZLayer,
         automaticBordering,
-        pointSnap,
+        snapToPoint,
         adaptiveZoom,
         intelligentPolygonCrop,
         workspace,
@@ -274,9 +277,15 @@ function mapStateToProps(state: CombinedState): StateToProps {
 
 const componentShortcuts = {
     SWITCH_AUTOMATIC_BORDERING: {
-        name: 'Switch automatic bordering',
-        description: 'Switch automatic bordering for polygons and polylines during drawing/editing',
-        sequences: ['ctrl+a'],
+        name: 'Toggle snap to contour',
+        description: 'Toggle automatic snap to contour for polygons and polylines during drawing/editing',
+        sequences: [],
+        scope: ShortcutScope.STANDARD_WORKSPACE,
+    },
+    SWITCH_SNAP_TO_POINT: {
+        name: 'Toggle snap to point',
+        description: 'Toggle automatic snapping to nearby points',
+        sequences: [],
         scope: ShortcutScope.STANDARD_WORKSPACE,
     },
     NEXT_OBJECT: {
@@ -309,8 +318,11 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         onUpdateAnnotations(states: ObjectState[]): void {
             dispatch(updateAnnotationsAsync(states));
         },
-        onCreateAnnotations(states: ObjectState[]): void {
-            dispatch(createAnnotationsAsync(states));
+        onCreateAnnotations(
+            states: ObjectState[],
+            source: AnnotationSource = AnnotationSource.OTHER,
+        ): void {
+            dispatch(createAnnotationsAsync(states, source));
         },
         onMergeAnnotations(states: ObjectState[]): void {
             dispatch(mergeAnnotationsAsync(states));
@@ -364,6 +376,9 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         onSwitchAutomaticBordering(enabled: boolean): void {
             dispatch(switchAutomaticBordering(enabled));
         },
+        onSwitchSnapToPoint(enabled: boolean): void {
+            dispatch(switchSnapToPoint(enabled));
+        },
         onFetchAnnotation(): void {
             dispatch(fetchAnnotationsAsync());
         },
@@ -391,7 +406,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
     public componentDidMount(): void {
         const {
             automaticBordering,
-            pointSnap,
+            snapToPoint,
             adaptiveZoom,
             intelligentPolygonCrop,
             showObjectsTextAlways,
@@ -421,7 +436,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
             undefinedAttrValue: config.UNDEFINED_ATTRIBUTE_VALUE,
             displayAllText: showObjectsTextAlways,
             autoborders: automaticBordering,
-            pointSnap,
+            snapToPoint,
             adaptiveZoom,
             showProjections,
             showConflicts: showGroundTruth,
@@ -471,7 +486,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
             textContent,
             showAllInterpolationTracks,
             automaticBordering,
-            pointSnap,
+            snapToPoint,
             adaptiveZoom,
             intelligentPolygonCrop,
             showProjections,
@@ -487,7 +502,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
         if (
             prevProps.showObjectsTextAlways !== showObjectsTextAlways ||
             prevProps.automaticBordering !== automaticBordering ||
-            prevProps.pointSnap !== pointSnap ||
+            prevProps.snapToPoint !== snapToPoint ||
             prevProps.adaptiveZoom !== adaptiveZoom ||
             prevProps.showProjections !== showProjections ||
             prevProps.intelligentPolygonCrop !== intelligentPolygonCrop ||
@@ -509,7 +524,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
                 undefinedAttrValue: config.UNDEFINED_ATTRIBUTE_VALUE,
                 displayAllText: showObjectsTextAlways,
                 autoborders: automaticBordering,
-                pointSnap,
+                snapToPoint,
                 adaptiveZoom,
                 showProjections,
                 intelligentPolygonCrop,
@@ -684,7 +699,7 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
             updateActiveControl(ActiveControl.CURSOR);
         }
 
-        const { state, duration } = event.detail;
+        const { state, duration, simplifyPoly } = event.detail;
         const isDrawnFromScratch = !state.label;
 
         state.objectType = state.shapeType === ShapeType.MASK ?
@@ -712,9 +727,12 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
         } else {
             jobInstance.logger.log(EventScope.pasteObject, { count: 1, duration });
         }
-
         const objectState = new cvat.classes.ObjectState(state);
-        onCreateAnnotations([objectState]);
+
+        const source = simplifyPoly && [ShapeType.POLYGON, ShapeType.POLYLINE].includes(state.shapeType) ?
+            AnnotationSource.DRAW_SIMPLIFIED_POLY : AnnotationSource.OTHER;
+
+        onCreateAnnotations([objectState], source);
         onUpdateEditedObject(null);
     };
 
@@ -1123,14 +1141,15 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
             curZLayer,
             minZLayer,
             keyMap,
-            switchableAutomaticBordering,
             automaticBordering,
+            snapToPoint,
             showTagsOnFrame,
             canvasIsReady,
             annotations,
             activatedStateID,
             focusedObjectPadding,
             onSwitchAutomaticBordering,
+            onSwitchSnapToPoint,
             onSwitchZLayer,
             onAddZLayer,
             onActivateObject,
@@ -1169,10 +1188,12 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
 
         const handlers: Record<keyof typeof componentShortcuts, (event?: KeyboardEvent) => void> = {
             SWITCH_AUTOMATIC_BORDERING: (event: KeyboardEvent | undefined) => {
-                if (switchableAutomaticBordering) {
-                    preventDefault(event);
-                    onSwitchAutomaticBordering(!automaticBordering);
-                }
+                preventDefault(event);
+                onSwitchAutomaticBordering(!automaticBordering);
+            },
+            SWITCH_SNAP_TO_POINT: (event: KeyboardEvent | undefined) => {
+                preventDefault(event);
+                onSwitchSnapToPoint(!snapToPoint);
             },
             NEXT_OBJECT: (event: KeyboardEvent | undefined) => {
                 preventDefault(event);
