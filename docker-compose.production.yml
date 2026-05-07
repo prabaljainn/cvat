@@ -183,6 +183,30 @@ services:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
+  cvat_worker_utils:
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
+    environment:
+      CVAT_ANALYTICS_ENABLED: "true"
+      CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
+  cvat_worker_webhooks:
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
+    environment:
+      CVAT_ANALYTICS_ENABLED: "true"
+      CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
+  cvat_worker_quality_reports:
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
+    environment:
+      CVAT_ANALYTICS_ENABLED: "true"
+      CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
+  cvat_worker_consensus:
+    image: ghcr.io/prabaljainn/cvat-server:${CVAT_IMAGE_TAG:-build-3}
+    environment:
+      CVAT_ANALYTICS_ENABLED: "true"
+      CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
   # Traefik: mount the rules file (IP allowlist + edge proxy) into the file provider directory
   traefik:
     environment:
