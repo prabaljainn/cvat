@@ -1,0 +1,94 @@
+http:
+  middlewares:
+    ip-allowlist:
+      ipAllowList:
+        # TODO: Remove 0.0.0.0/0 when ready to restrict access to specific IPs only.
+        sourceRange:
+#          - "0.0.0.0/0"
+          - "176.34.32.40" # exit-node-aws IP external
+          - "57.181.61.79" # exit-node IP
+          - "100.66.196.43" # tkr-edge-tokyo Tailscale IP
+          - "219.110.151.33" # tkr-edge-tokyo public egress IP
+          - "134.231.136.93"
+          - "134.231.136.94"
+          - "169.224.186.89"
+          - "169.224.186.0"
+          - "165.85.181.188"
+          - "165.85.181.171"
+          - "165.85.181.170"
+          - "165.85.181.169"
+          - "165.85.154.78"
+          - "165.85.154.7"
+          - "165.85.0.174"
+          - "165.85.0.157"
+          - "134.231.146.225"
+          - "134.231.146.226"
+          - "208.127.164.90"
+          - "169.224.186.205"
+          - "128.77.46.13"
+          - "134.231.136.202"
+          - "165.85.203.52"
+          - "134.231.146.249"
+          - "144.125.89.251"
+          - "144.125.89.252"
+          - "144.125.89.253"
+          - "144.125.89.254"
+          - "144.125.89.255"
+          - "169.224.186.64"
+          - "169.224.186.48"
+          - "169.224.186.47"
+          - "134.231.215.45"
+          - "134.231.215.44"
+
+    # Edge Server Proxy - strips /edge prefix before forwarding
+    edge-strip-prefix:
+      stripPrefix:
+        prefixes:
+          - /edge
+
+    # Root redirect: / -> /dashboard/
+    root-to-dashboard:
+      redirectRegex:
+        regex: "^.*$"
+        replacement: 'https://{{ env "CVAT_HOST" }}/dashboard/'
+        permanent: true
+
+  # Edge Server Proxy Router
+  # Forwards /edge/* requests to the private edge server via Tailscale
+  # Configure EDGE_SERVER_URL in .env (default: http://tkr-edge:8000)
+  routers:
+    edge-proxy:
+      entryPoints:
+        - web
+      middlewares:
+        - edge-strip-prefix
+      service: edge-server
+      rule: Host(`{{ env "CVAT_HOST" }}`) && PathPrefix(`/edge/`)
+
+    edge-proxy-https:
+      entryPoints:
+        - websecure
+      middlewares:
+        - edge-strip-prefix
+      service: edge-server
+      tls: {}
+      rule: Host(`{{ env "CVAT_HOST" }}`) && PathPrefix(`/edge/`)
+
+    # Redirects bare https://CVAT_HOST/ to /dashboard/
+    # Path(`/`) is exact-match — does NOT touch /api/, /tasks, /auth/login, etc.
+    root-redirect:
+      entryPoints:
+        - websecure
+      rule: Host(`{{ env "CVAT_HOST" }}`) && Path(`/`)
+      priority: 3000
+      middlewares:
+        - root-to-dashboard
+      service: noop@internal
+      tls: {}
+
+  services:
+    edge-server:
+      loadBalancer:
+        servers:
+          - url: "{{ env "EDGE_SERVER_URL" }}"
+        passHostHeader: false

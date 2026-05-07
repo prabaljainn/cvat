@@ -8,7 +8,7 @@ services:
   # Angular Dashboard Integration
   angular_dashboard:
     container_name: angular_dashboard
-    image: ghcr.io/prabaljainn/orochi-ui:staging
+    image: ghcr.io/prabaljainn/orochi-ui:feature-hitesh
     restart: always
     environment:
       BOX: 'false'
@@ -54,7 +54,7 @@ services:
       traefik.http.routers.angular-dashboard-https.entrypoints: websecure
       traefik.http.routers.angular-dashboard-https.tls: "true"
       traefik.http.routers.angular-dashboard-https.tls.certresolver: lets-encrypt
-      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors,dashboard-security"
+      traefik.http.routers.angular-dashboard-https.middlewares: "dashboard-cors,dashboard-security,ip-allowlist@file"
       traefik.http.routers.angular-dashboard-https.priority: "2000"
     networks:
       - cvat
@@ -77,14 +77,17 @@ services:
 
   # CVAT Server with Custom Analytics - Build your custom image
   cvat_server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-        CLAM_AV: ${CLAM_AV:-no}
+    labels:
+      traefik.http.routers.cvat.middlewares: "ip-allowlist@file"
+    image: prabaljainn/cvat-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    #     CLAM_AV: ${CLAM_AV:-no}
     environment:
       # Custom analytics features
       CVAT_ANALYTICS_ENABLED: "true"
@@ -110,68 +113,82 @@ services:
 
   # CVAT UI with Custom Train Metadata Component
   cvat_ui:
-    build:
-      context: .
-      dockerfile: Dockerfile.ui
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-    # Override the default image to use your built UI
-    image: cvat/ui:custom-train-metadata
+    labels:
+      traefik.http.routers.cvat-ui.middlewares: "ip-allowlist@file"
+    image: prabaljainn/cvat-ui:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.ui
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    # # Override the default image to use your built UI
+    # image: cvat/ui:custom-train-metadata
 
   # All workers use your custom build too
   cvat_worker_import:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-        CLAM_AV: ${CLAM_AV:-no}
+    image: prabaljainn/cvat-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    #     CLAM_AV: ${CLAM_AV:-no}
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_export:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-        CLAM_AV: ${CLAM_AV:-no}
+    image: prabaljainn/cvat-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    #     CLAM_AV: ${CLAM_AV:-no}
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_annotation:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-        CLAM_AV: ${CLAM_AV:-no}
+    image: prabaljainn/cvat-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    #     CLAM_AV: ${CLAM_AV:-no}
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
 
   cvat_worker_chunks:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        http_proxy: ${http_proxy:-}
-        https_proxy: ${https_proxy:-}
-        socks_proxy: ${socks_proxy:-}
-        CLAM_AV: ${CLAM_AV:-no}
+    image: prabaljainn/cvat-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     http_proxy: ${http_proxy:-}
+    #     https_proxy: ${https_proxy:-}
+    #     socks_proxy: ${socks_proxy:-}
+    #     CLAM_AV: ${CLAM_AV:-no}
     environment:
       CVAT_ANALYTICS_ENABLED: "true"
       CVAT_CUSTOM_FEATURES_ENABLED: "true"
+
+  # Traefik: mount the rules file (IP allowlist + edge proxy) into the file provider directory
+  traefik:
+    environment:
+      EDGE_SERVER_URL: ${EDGE_SERVER_URL:-http://tkr-edge:8000}
+    volumes:
+      - ./components/analytics/traefik_rules.yml:/etc/traefik/rules/traefik_rules.yml:ro
 
   # Override problematic KVRocks with regular Redis
   cvat_redis_ondisk:
