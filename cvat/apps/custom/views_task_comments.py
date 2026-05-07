@@ -25,6 +25,7 @@ from .serializers import (
 
 
 class TaskCommentViewSet(viewsets.ModelViewSet):
+    iam_supports_organization_params = True
     """
     ViewSet for Task Comments with full CRUD operations.
 
@@ -170,6 +171,7 @@ class TaskCommentViewSet(viewsets.ModelViewSet):
 
 
 class TaskCommentsListView(viewsets.ReadOnlyModelViewSet):
+    iam_supports_organization_params = True
     """
     Simplified view for listing task comments.
 
