@@ -9,7 +9,7 @@
 
 ## 1. Summary
 
-Introduce a CSV-driven schedule that maps each `train_id` to a single group (e.g., `A`, `B`, `C`). The mapping is uploaded by admins, versioned with a full audit trail, and exposed throughout the dashboard so users can filter and view tasks by group.
+Introduce a schedule that maps each `train_id` to a single group (e.g., `A`, `B`, `C`). Admins update the schedule by uploading a CSV, uploading an Excel `.xlsx` file, or pasting rows directly from Excel. Every change is versioned with a full audit trail and exposed throughout the dashboard so users can filter and view tasks by group.
 
 The mapping is a property of the **train**, not the task. Many tasks can share one train_id; uploading a CSV does not touch task records.
 
@@ -49,7 +49,7 @@ The schedule is currently maintained in an external spreadsheet, edited by a sma
 | Question | Decision |
 |---|---|
 | Group semantics | One free-text group name per train (e.g., `A`). One train belongs to exactly one group. Many trains per group. |
-| CSV layout | Long format, two columns: `train_id,group`. One row per train. UTF-8. Header required. |
+| Input format | Long format, two columns: `train_id,group`. One row per train. Accepted as **CSV file**, **`.xlsx` file** (first sheet), or **pasted text** (tab- or comma-separated). All three paths run through the same parser → same validation → same diff → same versioning. |
 | Upload semantics | **Replace all** (full sync). Anything not in the CSV becomes Ungrouped. Versioning + rollback covers mistakes. |
 | Edit UX | CSV upload + read-only paginated table in admin UI. No inline edits. |
 | Permissions | Deferred. Centralised in one constant (`MAPPING_ADMIN_PERMISSIONS`), defaulting to Django `is_staff`/superuser. Easy to swap to a custom Group or CVAT IAM later. |
@@ -97,7 +97,13 @@ class TrainGroupMappingVersion(models.Model):
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
     comment = models.CharField(max_length=500, blank=True)
-    csv_text = models.TextField()           # full original CSV (UTF-8)
+    csv_text = models.TextField()           # canonical CSV form (UTF-8) —
+                                            # xlsx uploads are normalized to CSV
+                                            # before storing, so every version
+                                            # is reproducible as text
+    source_format = models.CharField(       # "csv" | "xlsx" | "paste" | "rollback"
+        max_length=16, default="csv",
+    )
     row_count = models.PositiveIntegerField()
     is_current = models.BooleanField(default=False)
     source_version = models.ForeignKey(
@@ -178,7 +184,7 @@ Base path: `/api/train-groups/`
 | `GET` | `mappings/` | Any auth user | Paginated current mappings. Query: `?search=` (matches train_id or group), `?group=`, `?page=`, `?page_size=`. |
 | `GET` | `mappings/template.csv` | Any auth user | Downloads a blank CSV with header + a few example rows. |
 | `GET` | `mappings/export.csv` | Any auth user | Downloads the current mapping as CSV (round-trip with template format). |
-| `POST` | `mappings/upload/` | `MAPPING_ADMIN` | Multipart: `file`, optional `comment`, optional `dry_run=true`. Returns `{version, diff, warnings}`. |
+| `POST` | `mappings/upload/` | `MAPPING_ADMIN` | Accepts: multipart `file` (`.csv` or `.xlsx`) + optional `comment` + optional `dry_run`; **or** JSON `{text, comment, dry_run}` for pasted-from-Excel. Returns `{version, diff, warnings}`. |
 | `GET` | `versions/` | `MAPPING_ADMIN` | Paginated audit list (version_no, uploaded_by, uploaded_at, comment, counts, is_current). |
 | `GET` | `versions/<id>/` | `MAPPING_ADMIN` | Full version detail: `csv_text` + `diff_summary`. |
 | `POST` | `versions/<id>/rollback/` | `MAPPING_ADMIN` | Re-apply that version. Body: optional `comment`. Creates a new version with `source_version=<id>` set. |
@@ -199,10 +205,13 @@ Every write endpoint references this constant. Swapping to a custom group/IAM ch
 
 ---
 
-## 9. CSV format & validation
+## 9. Input formats & validation
 
-### 9.1 Format
+### 9.1 Three accepted input modes (one parser)
 
+All three paths normalize to the same internal `list[ParsedRow]`, then run through the same validation, diff computation, and apply step.
+
+**Mode A — CSV file (`.csv`)**
 ```csv
 train_id,group
 3101F,A
@@ -210,42 +219,73 @@ train_id,group
 3103F,A
 ```
 
-- UTF-8, optional BOM tolerated
-- Header row required: exactly `train_id,group` (case-sensitive)
+**Mode B — Excel file (`.xlsx`)**
+- Read the **first sheet** via `openpyxl`
+- Same two-column schema: header row `train_id,group`, then data
+- Empty trailing rows tolerated
+- Other sheets in the workbook are ignored (workbook with hidden working sheets is fine)
+- `openpyxl` is added to `requirements/base.txt` (used elsewhere in the Python data ecosystem; ~600 KB; pure Python, no native deps)
+
+**Mode C — Paste from Excel (textarea)**
+- Frontend posts the pasted text directly
+- Parser auto-detects separator: tab if any line contains `\t`, otherwise comma
+- Excel's clipboard format is tab-separated by default → "select two columns, copy, paste" just works
+- Header row optional in this mode (we accept either with or without header for convenience; if first line looks like data, treat it as data)
+
+### 9.2 Common validation rules (apply to all modes)
+
+- UTF-8, optional BOM tolerated (CSV/paste)
+- For CSV/xlsx: header row required, exactly `train_id,group` (case-sensitive)
 - Extra columns are ignored silently (forward compatibility)
-- Trailing blank lines tolerated
+- Trailing blank rows/lines tolerated
 - `train_id`: non-empty, max 100 chars, regex `^[A-Za-z0-9_-]+$` (whitespace trimmed first)
 - `group`: non-empty, max 50 chars (whitespace trimmed first)
-- Duplicate `train_id` within a file → rejection
-- Empty CSV (header only) → accepted as "clear all", flagged with a large warning in dry-run
+- Duplicate `train_id` within a file → rejection with line/row numbers
+- Empty input (header only / blank paste) → accepted as "clear all", flagged with a large warning in dry-run
 
-### 9.2 Pure parser module
+### 9.3 Parser module
 
-`cvat/apps/custom/train_group_csv.py` — no Django imports beyond `transaction`:
+`cvat/apps/custom/train_group_parser.py` — no Django imports beyond `transaction`:
 
 ```python
-def parse_mapping_csv(text: str) -> tuple[list[ParsedRow], list[ValidationError]]
+def parse_csv(text: str) -> tuple[list[ParsedRow], list[ValidationError]]
+def parse_xlsx(file_bytes: bytes) -> tuple[list[ParsedRow], list[ValidationError]]
+def parse_pasted(text: str) -> tuple[list[ParsedRow], list[ValidationError]]
+    # Auto-detects \t vs , separator; tolerates missing header
+
 def compute_diff(new_rows, current_mapping_qs) -> DiffSummary
-def apply_upload(rows, user, comment, source_version=None) -> Version
+def apply_upload(rows, user, comment, raw_input_text: str,
+                 source_format: str, source_version=None) -> Version
 ```
 
-Keeps parser and diff logic unit-testable without DB.
+`raw_input_text` is what we store in `TrainGroupMappingVersion.csv_text` — for .xlsx uploads we normalize to CSV first (so the stored snapshot is always reproducible as text). `source_format` (one of `"csv"`, `"xlsx"`, `"paste"`) is also stored on the version for the audit log.
 
-### 9.3 Limits
+### 9.4 Limits
 
-- Max file size: 1 MB
+- Max file size: 5 MB (raised slightly to accommodate Excel files with formatting overhead)
 - Max rows: 50,000 (configurable via Django setting `TRAIN_GROUP_MAX_ROWS`)
+- Pasted text capped at 1 MB to keep request bodies sane
 
 ---
 
 ## 10. Upload flow
 
+The same endpoint accepts all three input modes — the request body shape tells us which:
+
 ```
 POST /api/train-groups/mappings/upload/
-  multipart: file=<csv>, comment="<optional>", dry_run=<bool, default false>
+  # Mode A — CSV file:
+  multipart: file=<file.csv>, comment="<optional>", dry_run=<bool, default false>
+
+  # Mode B — Excel file:
+  multipart: file=<file.xlsx>, comment="<optional>", dry_run=<bool>
+  # (file extension + magic-byte check determines parser)
+
+  # Mode C — Pasted text:
+  application/json: {"text": "<pasted text>", "comment": "<optional>", "dry_run": <bool>}
 ```
 
-1. **Parse & validate** in memory. If any row error, return `400` with `{errors: [{line, train_id, reason}, ...]}` and apply nothing.
+1. **Detect mode & parse** in memory: dispatch to `parse_csv` / `parse_xlsx` / `parse_pasted`. If any row error, return `400` with `{errors: [{line, train_id, reason}, ...]}` and apply nothing.
 2. **Compute diff** vs `TrainGroupMapping` (added / removed / changed / unchanged).
 3. **Generate warnings** (non-blocking):
    - Train IDs in CSV with no matching `TaskTrainMetadata` ("N trains in CSV have no tasks yet")
@@ -308,11 +348,35 @@ Two main cards:
 - `View` → modal with full diff + collapsible raw CSV
 - `Rollback` → confirmation dialog: "Roll back to v17 (Bob, 2026-05-23)? This will create v19 with the same mapping as v17. Current v18 will remain in history."
 
-**Upload dialog**
-- File picker (`.csv` only)
-- Optional `Comment` field
-- On submit, first calls `?dry_run=true` and shows preview screen with counts (Added / Changed / Removed / Unchanged), expandable lists, and warnings
-- User clicks `Apply` → second call without `dry_run` → success → both cards refresh
+**Upload dialog** — three input modes via tabs:
+
+```
+┌─ Update schedule ─────────────────────────────────────────────┐
+│ [ Upload file ]  [ Paste from Excel ]                         │
+│                                                               │
+│ (Upload file tab)                                             │
+│   Drop a .csv or .xlsx file here, or [Choose file]            │
+│   Accepted: .csv, .xlsx                                       │
+│                                                               │
+│ (Paste from Excel tab)                                        │
+│   Copy two columns (train_id, group) from Excel and paste:    │
+│   ┌────────────────────────────────────────────────┐          │
+│   │ 3101F<TAB>A                                    │          │
+│   │ 3102F<TAB>B                                    │          │
+│   │ ...                                            │          │
+│   └────────────────────────────────────────────────┘          │
+│                                                               │
+│ Comment (optional): [_____________________________]           │
+│                                                               │
+│                                  [Cancel]  [Preview changes]  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- "Upload file" tab: file picker accepts `.csv` and `.xlsx`. File extension determines parser.
+- "Paste from Excel" tab: large textarea; user pastes copied cells (Excel's clipboard format is tab-separated by default, so this just works).
+- Optional `Comment` field shared by both tabs.
+- On submit, first calls `?dry_run=true` and shows preview screen with counts (Added / Changed / Removed / Unchanged), expandable lists, and warnings.
+- User clicks `Apply` → second call without `dry_run` → success → both cards refresh.
 
 **Validation error display**
 - If upload returns 400 with row-level errors, render a scrollable list inside the dialog (`Line 14: invalid train_id "3101 F" (whitespace not allowed)`).
@@ -341,17 +405,26 @@ Two main cards:
 | User deleted that uploaded a version | `uploaded_by` becomes NULL; version still readable |
 | Non-UTF-8 CSV | 400 with clear error |
 | File over 50,000 rows | 400; limit configurable |
+| `.xlsx` with multiple sheets | Only the first sheet is read; others ignored silently (admins may keep working sheets in the workbook) |
+| `.xlsx` with merged cells in the data range | Reject with 400 — "merged cells in data area not supported" |
+| `.xlsx` with formulas instead of values | Read the cached value (`openpyxl` default behavior); if no cached value (file never opened in Excel), reject with clear error |
+| Pasted text with no separator detected | Reject — "could not detect column separator; ensure two columns" |
+| Pasted text with only one column | Reject — "expected two columns (train_id and group)" |
 
 ---
 
 ## 14. Testing
 
-**Unit** (`cvat/apps/custom/tests/test_train_group_csv.py`)
-- Parser happy path + every validation rule
-- Diff computation across base states (empty / populated / subset / superset)
+**Unit** (`cvat/apps/custom/tests/test_train_group_parser.py`)
+- `parse_csv`: happy path, missing header, duplicate train_id, whitespace/BOM, case sensitivity, max rows, non-UTF-8, ignored extra columns
+- `parse_xlsx`: happy path, first-sheet-only behavior, merged-cells rejection, formula-cached-value reading, formula-with-no-cache rejection
+- `parse_pasted`: tab-separated happy path, comma-separated fallback, with-and-without-header tolerance, no-separator rejection, one-column rejection
+- All three parsers produce identical `ParsedRow` output for the same logical data — assert byte-for-byte equality
+- `compute_diff`: across base states (empty / populated / subset / superset)
 
 **Integration** (`cvat/apps/custom/tests/test_train_group_endpoints.py`)
-- Upload happy path → 200, version + mappings + diff_summary correct
+- Upload happy path for **each input mode**: CSV file, .xlsx file, pasted JSON — all produce the same final state
+- `source_format` correctly recorded on `TrainGroupMappingVersion`
 - Upload validation failures → 400, no DB writes
 - Dry-run → no writes, returns diff
 - `mappings/` pagination + search
@@ -388,12 +461,14 @@ Each step is independently reversible.
 
 | Risk | Mitigation |
 |---|---|
-| Admin uploads wrong CSV, breaks dashboard view | Mandatory dry-run preview before apply; one-click rollback |
+| Admin uploads wrong file, breaks dashboard view | Mandatory dry-run preview before apply; one-click rollback |
 | Performance regression from JOIN | Subquery annotation + CI query-count test |
-| CSV format drift (extra columns) | Parser ignores unknown columns; only `train_id,group` required |
+| Format drift (extra columns) | Parser ignores unknown columns; only `train_id,group` required |
 | Group dropdown grows long | Searchable dropdown component |
 | Two admins overwrite each other | DB lock + 409 response; UI warns "v18 was just uploaded by Bob — refresh?" |
 | Permission decision deferred | Centralised constant — one-line change to swap |
+| `openpyxl` dependency surface | Pinned version in `requirements/base.txt`; pure-Python with no native deps; battle-tested library |
+| `.xlsx` files with formulas not recalculated | Reject with clear "file has unevaluated formulas — open in Excel and save" error |
 
 ---
 
@@ -407,10 +482,9 @@ Each step is independently reversible.
 
 ## 18. Out of scope (reaffirmed)
 
-- `.xlsx` upload
 - Inline single-row admin edits in UI
 - Group metadata beyond name
 - Group hierarchy
 - Multi-tenant schedules
-- Auto-import
+- Auto-import / Google Sheets sync
 - Old-version cleanup
