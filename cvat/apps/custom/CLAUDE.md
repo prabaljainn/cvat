@@ -132,20 +132,55 @@ models.Index(fields=["a", "b"])   # let Django auto-name
 
 If you must hand-write one (CI doesn't have Django readily available), accept that `makemigrations --check` may fail on the first CI run with a "Rename index ..." message — fix it by copying Django's expected hash from that message.
 
-### 6. `OuterRef('relation__field')` returns NULL silently with `prefetch_related`
+### 6. `OuterRef('relation__field')` returns NULL silently with `prefetch_related` — AND nested Subqueries cause type mismatches
 
-If the outer queryset uses `select_related(...)`, OuterRef across that relation works (JOIN exists). If the outer queryset uses `prefetch_related(...)`, OuterRef silently resolves to NULL (no JOIN, no error).
+Two related traps:
+
+**6a — `OuterRef('rel__field')` is silent NULL when the outer queryset uses `prefetch_related`** (because prefetch doesn't add a JOIN; there's no `rel` to reference in the outer SQL):
 
 ```python
-# WRONG (breaks in real views that use prefetch_related)
+# WRONG — silently returns NULL in views that prefetch_related
 sq = OtherModel.objects.filter(field=OuterRef('rel__field')).values('x')[:1]
-
-# RIGHT (works regardless of outer queryset shape)
-rel_value = Related.objects.filter(parent_id=OuterRef('pk')).values('field')[:1]
-sq = OtherModel.objects.filter(field=Subquery(rel_value)).values('x')[:1]
 ```
 
-When writing tests for any annotation helper, **always** test it against a queryset shape that mirrors the real view (with `prefetch_related` if that's what views use).
+**6b — Don't fix it by nesting Subqueries**. `OuterRef("pk")` inside a nested Subquery refers to the IMMEDIATE parent subquery, not the outermost query. If that parent model has a non-integer primary_key (like `TrainGroupMapping.train_id` which is `primary_key=True`), Postgres will throw `operator does not exist: integer = character varying`:
+
+```python
+# WRONG — nests OuterRef one level too deep
+group_sq = TrainGroupMapping.objects.filter(
+    train_id=Subquery(
+        TaskTrainMetadata.objects.filter(
+            task_id=OuterRef("pk")  # ← "pk" here is TrainGroupMapping.train_id (varchar), NOT Task.pk
+        ).values("train_id")[:1]
+    )
+).values("group")[:1]
+queryset.annotate(train_group=Subquery(group_sq))
+```
+
+**RIGHT — chain annotations on the OUTER queryset**:
+
+```python
+queryset = queryset.annotate(
+    _train_id=Subquery(
+        TaskTrainMetadata.objects
+        .filter(task_id=OuterRef("pk"))  # OuterRef → Task.pk (correct)
+        .values("train_id")[:1]
+    )
+)
+queryset = queryset.annotate(
+    train_group=Subquery(
+        TrainGroupMapping.objects
+        .filter(train_id=OuterRef("_train_id"))  # OuterRef → Task._train_id (correct)
+        .values("group")[:1]
+    )
+)
+```
+
+Each subquery's OuterRef refers directly to a column on the outer Task query — no nesting, no type drift.
+
+When writing tests for any annotation helper, **always** test it against:
+1. A queryset shape mirroring the real view (with `prefetch_related` if used there)
+2. The real database backend (Postgres), not just SQLite — SQLite is permissive about cross-type comparisons; Postgres isn't. CI does run Postgres; just make sure the test actually exercises the annotated value.
 
 ## The meta-rule under all 6 gotchas
 
