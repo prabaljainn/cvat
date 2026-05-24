@@ -189,3 +189,46 @@ class VersionHistoryTest(TestCase):
         client = APIClient(); client.force_authenticate(regular)
         resp = client.get("/api/train-groups/versions/")
         self.assertEqual(resp.status_code, 403)
+
+
+class RollbackTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("admin3", password="pw", is_staff=True)
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("v1.csv", b"train_id,group\n3101F,A\n", "text/csv")},
+            format="multipart",
+        )
+        self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("v2.csv", b"train_id,group\n3102F,B\n", "text/csv")},
+            format="multipart",
+        )
+
+    def test_rollback_creates_new_version_with_old_mapping(self):
+        resp = self.client.post(
+            "/api/train-groups/versions/1/rollback/",
+            data={"comment": "back to v1"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["version"], 3)
+        # Mapping is back to v1 state
+        self.assertTrue(TrainGroupMapping.objects.filter(train_id="3101F", group="A").exists())
+        self.assertFalse(TrainGroupMapping.objects.filter(train_id="3102F").exists())
+        # New version row records source_version=1 and source_format=rollback
+        v3 = TrainGroupMappingVersion.objects.get(version_no=3)
+        self.assertEqual(v3.source_version_id, 1)
+        self.assertEqual(v3.source_format, "rollback")
+        self.assertTrue(v3.is_current)
+
+    def test_rollback_nonexistent_version_404(self):
+        resp = self.client.post("/api/train-groups/versions/999/rollback/", format="json")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_rollback_requires_admin(self):
+        regular = User.objects.create_user("user1", password="pw")
+        client = APIClient(); client.force_authenticate(regular)
+        resp = client.post("/api/train-groups/versions/1/rollback/", format="json")
+        self.assertEqual(resp.status_code, 403)

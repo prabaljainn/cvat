@@ -97,6 +97,9 @@ urlpatterns = [
          name='train-groups-versions'),
     path('train-groups/versions/<int:version_no>/', views_train_groups.VersionDetailView.as_view(),
          name='train-groups-version-detail'),
+    path('train-groups/versions/<int:version_no>/rollback/',
+         views_train_groups.RollbackView.as_view(),
+         name='train-groups-rollback'),
 ]
 
 # Add the router URLs

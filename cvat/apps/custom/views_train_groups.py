@@ -282,3 +282,34 @@ class VersionDetailView(RetrieveAPIView):
     serializer_class = TrainGroupMappingVersionDetailSerializer
     queryset = TrainGroupMappingVersion.objects.all()
     lookup_field = "version_no"
+
+
+from django.shortcuts import get_object_or_404
+
+
+class RollbackView(APIView):
+    """POST /api/train-groups/versions/<version_no>/rollback/"""
+    permission_classes = MAPPING_ADMIN_PERMISSIONS
+
+    def post(self, request, version_no: int):
+        source = get_object_or_404(TrainGroupMappingVersion, version_no=version_no)
+        comment = (request.data.get("comment") or f"Rollback to v{source.version_no}").strip()
+
+        # Re-parse the stored csv_text — it's always canonical CSV
+        rows, errors = parse_csv(source.csv_text)
+        if errors:
+            return Response(
+                {"errors": [asdict(e) for e in errors]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        version = apply_upload(
+            rows=rows, user=request.user, comment=comment,
+            raw_input_text=source.csv_text, source_format="rollback",
+            source_version=source,
+        )
+        return Response({
+            "version": version.version_no,
+            "source_version": source.version_no,
+            "diff": version.diff_summary,
+        })
