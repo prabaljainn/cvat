@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from django.test import SimpleTestCase
 
 from cvat.apps.custom.train_group_parser import ParsedRow, ValidationError, parse_csv
@@ -103,3 +105,86 @@ class ParseCsvValidationTest(SimpleTestCase):
         rows, errors = parse_csv(csv)
         self.assertEqual(rows, [])
         self.assertEqual(len(errors), 3)
+
+
+from openpyxl import Workbook
+
+from cvat.apps.custom.train_group_parser import parse_xlsx
+
+
+def _xlsx_bytes(rows: list[list]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    for row in rows:
+        ws.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+class ParseXlsxTest(SimpleTestCase):
+    def test_basic_happy_path(self):
+        data = _xlsx_bytes([
+            ["train_id", "group"],
+            ["3101F", "A"],
+            ["3102F", "B"],
+        ])
+        rows, errors = parse_xlsx(data)
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            rows,
+            [
+                ParsedRow("3101F", "A", line_no=2),
+                ParsedRow("3102F", "B", line_no=3),
+            ],
+        )
+
+    def test_tolerates_trailing_empty_rows(self):
+        data = _xlsx_bytes([
+            ["train_id", "group"],
+            ["3101F", "A"],
+            [None, None],
+            ["", ""],
+        ])
+        rows, errors = parse_xlsx(data)
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [ParsedRow("3101F", "A", line_no=2)])
+
+    def test_rejects_wrong_header(self):
+        data = _xlsx_bytes([
+            ["foo", "bar"],
+            ["3101F", "A"],
+        ])
+        rows, errors = parse_xlsx(data)
+        self.assertEqual(rows, [])
+        self.assertIn("header", errors[0].reason.lower())
+
+    def test_first_sheet_only(self):
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = "Schedule"
+        ws1.append(["train_id", "group"])
+        ws1.append(["3101F", "A"])
+        ws2 = wb.create_sheet("Notes")
+        ws2.append(["this should be ignored", "really"])
+        buf = BytesIO()
+        wb.save(buf)
+        rows, errors = parse_xlsx(buf.getvalue())
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [ParsedRow("3101F", "A", line_no=2)])
+
+    def test_integer_cell_values_stringified(self):
+        # openpyxl returns ints for numeric cells; parser should str() them
+        data = _xlsx_bytes([
+            ["train_id", "group"],
+            [3101, 1],
+        ])
+        rows, errors = parse_xlsx(data)
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [ParsedRow("3101", "1", line_no=2)])
+
+    def test_corrupt_bytes_returns_error(self):
+        rows, errors = parse_xlsx(b"not a real xlsx")
+        self.assertEqual(rows, [])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].line, 0)

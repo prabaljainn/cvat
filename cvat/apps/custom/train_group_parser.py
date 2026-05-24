@@ -31,6 +31,7 @@ class ValidationError:
 import csv
 import io
 import re
+from io import BytesIO
 
 _TRAIN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _MAX_TRAIN_ID_LEN = 100
@@ -127,3 +128,43 @@ def parse_csv(text: str) -> tuple[list[ParsedRow], list[ValidationError]]:
     if errors:
         return [], errors
     return rows, []
+
+
+def parse_xlsx(file_bytes: bytes) -> tuple[list[ParsedRow], list[ValidationError]]:
+    """
+    Parse the FIRST worksheet of an xlsx file (passed as raw bytes).
+
+    Reads cached values for formulas; if no cached value is present (file never
+    opened in Excel), the cell is read as None.
+
+    Normalizes to CSV semantics and then re-uses parse_csv for validation so
+    the rules stay identical across input modes.
+    """
+    from openpyxl import load_workbook
+    from openpyxl.utils.exceptions import InvalidFileException
+
+    try:
+        import zipfile
+        wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+    except (InvalidFileException, KeyError, OSError, ValueError, zipfile.BadZipFile) as exc:
+        return [], [ValidationError(line=0, reason=f"could not read xlsx: {exc}")]
+
+    ws = wb.worksheets[0]
+
+    # Convert to CSV text — easier than threading line numbers through
+    csv_lines: list[str] = []
+    for row in ws.iter_rows(values_only=True):
+        # Treat all-empty rows as blank
+        if not row or all(c is None or (isinstance(c, str) and not c.strip()) for c in row):
+            csv_lines.append("")
+            continue
+        cells = []
+        for c in row[:2]:  # only first two columns matter
+            if c is None:
+                cells.append("")
+            else:
+                cells.append(str(c).strip())
+        csv_lines.append(",".join(cells))
+
+    csv_text = "\n".join(csv_lines)
+    return parse_csv(csv_text)
