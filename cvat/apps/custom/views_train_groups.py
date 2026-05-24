@@ -251,3 +251,34 @@ class UploadView(APIView):
             })
 
         return warnings
+
+
+from rest_framework.generics import RetrieveAPIView
+
+from .models import TrainGroupMappingVersion
+from .serializers import (
+    TrainGroupMappingVersionListSerializer,
+    TrainGroupMappingVersionDetailSerializer,
+)
+
+
+class VersionsListView(ListAPIView):
+    """GET /api/train-groups/versions/"""
+    permission_classes = MAPPING_ADMIN_PERMISSIONS
+    serializer_class = TrainGroupMappingVersionListSerializer
+    pagination_class = _MappingPagination
+
+    def get_queryset(self):
+        return (
+            TrainGroupMappingVersion.objects
+            .select_related("uploaded_by")
+            .order_by("-version_no")
+        )
+
+
+class VersionDetailView(RetrieveAPIView):
+    """GET /api/train-groups/versions/<version_no>/"""
+    permission_classes = MAPPING_ADMIN_PERMISSIONS
+    serializer_class = TrainGroupMappingVersionDetailSerializer
+    queryset = TrainGroupMappingVersion.objects.all()
+    lookup_field = "version_no"

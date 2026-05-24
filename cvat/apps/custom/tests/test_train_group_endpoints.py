@@ -149,3 +149,43 @@ class UploadViewTest(TestCase):
             format="multipart",
         )
         self.assertEqual(resp.status_code, 403)
+
+
+class VersionHistoryTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("admin2", password="pw", is_staff=True)
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        # Use the upload endpoint to create two versions
+        self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("v1.csv", b"train_id,group\n3101F,A\n", "text/csv")},
+            format="multipart",
+        )
+        self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("v2.csv", b"train_id,group\n3101F,A\n3102F,B\n", "text/csv"),
+                  "comment": "added 3102F"},
+            format="multipart",
+        )
+
+    def test_list_versions_descending(self):
+        resp = self.client.get("/api/train-groups/versions/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["count"], 2)
+        self.assertEqual(resp.data["results"][0]["version_no"], 2)
+        self.assertTrue(resp.data["results"][0]["is_current"])
+        self.assertFalse(resp.data["results"][1]["is_current"])
+
+    def test_detail_includes_csv_text_and_diff(self):
+        resp = self.client.get("/api/train-groups/versions/2/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("csv_text", resp.data)
+        self.assertIn("3101F,A", resp.data["csv_text"])
+        self.assertEqual(resp.data["diff_summary"]["counts"]["added"], 1)
+
+    def test_non_admin_rejected(self):
+        regular = User.objects.create_user("eve", password="pw")
+        client = APIClient(); client.force_authenticate(regular)
+        resp = client.get("/api/train-groups/versions/")
+        self.assertEqual(resp.status_code, 403)
