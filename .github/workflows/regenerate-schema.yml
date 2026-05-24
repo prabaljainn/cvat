@@ -1,0 +1,58 @@
+# Regenerate cvat/schema.yml from the current server build.
+#
+# Why: when our custom app adds endpoints (or has un-schema'd ones), the
+# committed schema drifts from what `python manage.py spectacular` outputs,
+# breaking the CI schema-diff check in rest_api_testing.
+#
+# This workflow pulls the latest cvat-server GHCR image (built by
+# custom-build-push-ghcr on every push to prabal-is-testing), runs
+# spectacular inside it, commits the resulting schema.yml back to the
+# branch, and pushes. Run manually after adding/changing endpoints.
+name: Regenerate schema.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'GHCR image tag to use (default: latest)'
+        required: false
+        default: 'latest'
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull cvat-server image
+        run: docker pull ghcr.io/${{ github.repository_owner }}/cvat-server:${{ github.event.inputs.image_tag }}
+
+      - name: Run spectacular and capture schema
+        run: |
+          docker run --rm ghcr.io/${{ github.repository_owner }}/cvat-server:${{ github.event.inputs.image_tag }} \
+            bash -c 'python manage.py spectacular' > cvat/schema.yml
+          echo "Lines: $(wc -l < cvat/schema.yml)"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet cvat/schema.yml; then
+            echo "No changes to schema.yml"
+            exit 0
+          fi
+          git add cvat/schema.yml
+          git commit -m "chore: regenerate cvat/schema.yml via Regenerate schema.yml workflow"
+          git push
