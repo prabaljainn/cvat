@@ -93,3 +93,161 @@ class MappingExportCsvView(APIView):
         resp = HttpResponse(buf.getvalue(), content_type="text/csv")
         resp["Content-Disposition"] = 'attachment; filename="train_group_mapping.csv"'
         return resp
+
+
+from dataclasses import asdict
+
+from rest_framework import status
+from rest_framework.parsers import MultiPartParser, JSONParser
+from rest_framework.response import Response
+
+from .train_group_parser import (
+    parse_csv, parse_xlsx, parse_pasted, compute_diff, apply_upload,
+)
+
+_MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
+_MAX_PASTED_BYTES = 1 * 1024 * 1024  # 1 MB
+
+
+def _is_truthy(val) -> bool:
+    if val is None:
+        return False
+    return str(val).strip().lower() in {"1", "true", "yes", "on"}
+
+
+class UploadView(APIView):
+    """POST /api/train-groups/mappings/upload/"""
+    permission_classes = MAPPING_ADMIN_PERMISSIONS
+    parser_classes = [MultiPartParser, JSONParser]
+
+    def post(self, request):
+        comment = (request.data.get("comment") or "").strip()
+        dry_run = _is_truthy(request.data.get("dry_run"))
+
+        # ---- 1. Resolve input mode and parse ----
+        if "file" in request.FILES:
+            upload = request.FILES["file"]
+            if upload.size > _MAX_FILE_BYTES:
+                return Response(
+                    {"errors": [{"line": 0,
+                                 "reason": f"file exceeds {_MAX_FILE_BYTES // 1024 // 1024} MB"}]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            data = upload.read()
+            name = (upload.name or "").lower()
+
+            if name.endswith(".xlsx"):
+                rows, errors = parse_xlsx(data)
+                source_format = "xlsx"
+                # Normalize raw_input to canonical CSV for storage
+                raw_input_text = "train_id,group\n" + "".join(
+                    f"{r.train_id},{r.group}\n" for r in rows
+                )
+            elif name.endswith(".csv") or name == "":
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    return Response(
+                        {"errors": [{"line": 0, "reason": "file is not valid UTF-8"}]},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                rows, errors = parse_csv(text)
+                source_format = "csv"
+                raw_input_text = text
+            else:
+                return Response(
+                    {"errors": [{"line": 0,
+                                 "reason": "unsupported file extension; expected .csv or .xlsx"}]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        elif "text" in request.data:
+            text = request.data.get("text") or ""
+            if len(text.encode("utf-8")) > _MAX_PASTED_BYTES:
+                return Response(
+                    {"errors": [{"line": 0,
+                                 "reason": f"pasted text exceeds {_MAX_PASTED_BYTES // 1024} KB"}]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rows, errors = parse_pasted(text)
+            source_format = "paste"
+            raw_input_text = "train_id,group\n" + "".join(
+                f"{r.train_id},{r.group}\n" for r in rows
+            )
+
+        else:
+            return Response(
+                {"errors": [{"line": 0,
+                             "reason": "expected multipart 'file' or JSON 'text'"}]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if errors:
+            return Response(
+                {"errors": [asdict(e) for e in errors]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ---- 2. Diff for warnings ----
+        diff = compute_diff(rows, TrainGroupMapping.objects.all())
+        warnings = self._generate_warnings(rows, diff)
+
+        # ---- 3. Dry-run short-circuit ----
+        if dry_run:
+            return Response({
+                "version": None,
+                "diff": diff,
+                "warnings": warnings,
+            })
+
+        # ---- 4. Apply ----
+        try:
+            version = apply_upload(
+                rows=rows, user=request.user, comment=comment,
+                raw_input_text=raw_input_text, source_format=source_format,
+            )
+        except Exception as exc:
+            return Response(
+                {"errors": [{"line": 0, "reason": f"apply failed: {exc}"}]},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({
+            "version": version.version_no,
+            "diff": version.diff_summary,
+            "warnings": warnings,
+        })
+
+    def _generate_warnings(self, rows, diff):
+        """Non-blocking informational warnings shown to the admin."""
+        from .models import TaskTrainMetadata
+
+        warnings = []
+        train_ids_in_csv = {r.train_id for r in rows}
+
+        # Trains in CSV with no existing task metadata yet
+        existing_with_meta = set(
+            TaskTrainMetadata.objects.filter(train_id__in=train_ids_in_csv)
+            .values_list("train_id", flat=True)
+        )
+        unused_in_csv = train_ids_in_csv - existing_with_meta
+        if unused_in_csv:
+            warnings.append({
+                "code": "trains_with_no_tasks",
+                "message": f"{len(unused_in_csv)} trains in CSV have no tasks yet",
+                "sample": sorted(unused_in_csv)[:10],
+            })
+
+        # Tasks that will become Ungrouped (their train_id is being removed)
+        removed_train_ids = {r["train_id"] for r in diff["removed"]}
+        affected_task_count = TaskTrainMetadata.objects.filter(
+            train_id__in=removed_train_ids,
+        ).count()
+        if affected_task_count:
+            warnings.append({
+                "code": "tasks_becoming_ungrouped",
+                "message": f"{affected_task_count} tasks will become Ungrouped",
+                "sample": sorted(removed_train_ids)[:10],
+            })
+
+        return warnings

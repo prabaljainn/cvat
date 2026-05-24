@@ -91,6 +91,8 @@ urlpatterns = [
          name='train-groups-template-csv'),
     path('train-groups/mappings/export.csv', views_train_groups.MappingExportCsvView.as_view(),
          name='train-groups-export-csv'),
+    path('train-groups/mappings/upload/', views_train_groups.UploadView.as_view(),
+         name='train-groups-upload'),
 ]
 
 # Add the router URLs

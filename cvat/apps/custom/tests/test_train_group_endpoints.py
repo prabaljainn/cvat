@@ -60,3 +60,92 @@ class TemplateAndExportTest(TestCase):
         self.assertEqual(body[0], "train_id,group")
         self.assertIn("3101F,A", body)
         self.assertIn("3102F,B", body)
+
+
+from io import BytesIO
+from openpyxl import Workbook
+
+from cvat.apps.custom.models import TrainGroupMappingVersion
+
+
+def _make_admin():
+    return User.objects.create_user("admin", password="pw", is_staff=True)
+
+
+class UploadViewTest(TestCase):
+    def setUp(self):
+        self.admin = _make_admin()
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def test_csv_upload_creates_version_and_mapping(self):
+        csv = b"train_id,group\n3101F,A\n3102F,B\n"
+        resp = self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("schedule.csv", csv, "text/csv"), "comment": "first"},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["version"], 1)
+        self.assertEqual(resp.data["diff"]["counts"]["added"], 2)
+        self.assertEqual(TrainGroupMapping.objects.count(), 2)
+        v = TrainGroupMappingVersion.objects.get(version_no=1)
+        self.assertEqual(v.source_format, "csv")
+        self.assertTrue(v.is_current)
+
+    def test_xlsx_upload_creates_version(self):
+        wb = Workbook(); ws = wb.active
+        ws.append(["train_id", "group"]); ws.append(["3101F", "A"])
+        buf = BytesIO(); wb.save(buf)
+        resp = self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("schedule.xlsx", buf.getvalue(),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        v = TrainGroupMappingVersion.objects.get(version_no=1)
+        self.assertEqual(v.source_format, "xlsx")
+
+    def test_pasted_upload_json(self):
+        resp = self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"text": "3101F\tA\n3102F\tB\n", "comment": "pasted"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        v = TrainGroupMappingVersion.objects.get(version_no=1)
+        self.assertEqual(v.source_format, "paste")
+
+    def test_dry_run_does_not_write(self):
+        csv = b"train_id,group\n3101F,A\n"
+        resp = self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("schedule.csv", csv, "text/csv"), "dry_run": "true"},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["version"])
+        self.assertEqual(TrainGroupMapping.objects.count(), 0)
+        self.assertEqual(TrainGroupMappingVersion.objects.count(), 0)
+
+    def test_invalid_csv_returns_400_no_writes(self):
+        csv = b"train_id,group\n,A\n"
+        resp = self.client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("bad.csv", csv, "text/csv")},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("errors", resp.data)
+        self.assertEqual(TrainGroupMapping.objects.count(), 0)
+
+    def test_non_admin_rejected(self):
+        regular = User.objects.create_user("bob", password="pw")
+        client = APIClient(); client.force_authenticate(regular)
+        resp = client.post(
+            "/api/train-groups/mappings/upload/",
+            data={"file": ("x.csv", b"train_id,group\n", "text/csv")},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 403)
