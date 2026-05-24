@@ -327,3 +327,60 @@ class TaskCommentUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # The model's save method will automatically set is_edited=True
         return super().update(instance, validated_data)
+
+
+# ==========================================
+# Train Group Schedule Serializers
+# ==========================================
+
+from .models import TrainGroupMapping, TrainGroupMappingVersion
+
+
+class TrainGroupMappingSerializer(serializers.ModelSerializer):
+    """Read-only representation of one train_id → group row."""
+
+    updated_by_username = serializers.CharField(
+        source="updated_by.username", read_only=True, default=None,
+    )
+
+    class Meta:
+        model = TrainGroupMapping
+        fields = ["train_id", "group", "updated_by_username", "updated_at"]
+        read_only_fields = fields
+
+
+class TrainGroupMappingVersionListSerializer(serializers.ModelSerializer):
+    """Light serializer for the version-history list endpoint."""
+
+    uploaded_by_username = serializers.CharField(
+        source="uploaded_by.username", read_only=True, default=None,
+    )
+    counts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainGroupMappingVersion
+        fields = [
+            "version_no",
+            "uploaded_by_username",
+            "uploaded_at",
+            "comment",
+            "source_format",
+            "row_count",
+            "is_current",
+            "source_version",
+            "counts",
+        ]
+        read_only_fields = fields
+
+    def get_counts(self, obj):
+        return obj.diff_summary.get("counts", {}) if obj.diff_summary else {}
+
+
+class TrainGroupMappingVersionDetailSerializer(TrainGroupMappingVersionListSerializer):
+    """Includes the full csv_text and diff_summary for a single version."""
+
+    class Meta(TrainGroupMappingVersionListSerializer.Meta):
+        fields = TrainGroupMappingVersionListSerializer.Meta.fields + [
+            "csv_text", "diff_summary",
+        ]
+        read_only_fields = fields
