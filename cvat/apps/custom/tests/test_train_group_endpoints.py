@@ -302,3 +302,20 @@ class TasksSummaryAvailableGroupsTest(TestCase):
         # Counts reflect mapped tasks regardless of filter
         self.assertEqual(by_name.get("A"), 2)
         self.assertEqual(by_name.get("B"), 1)
+
+
+class ExtendedTaskGroupTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("u3", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        owner = User.objects.create_user("owner3")
+        self.t1 = Task.objects.create(name="t1", owner=owner)
+        TaskTrainMetadata.objects.create(task=self.t1, train_id="3101F")
+        TrainGroupMapping.objects.create(train_id="3101F", group="A")
+
+    def test_detail_includes_group(self):
+        resp = self.client.get(f"/api/tasks-extended/{self.t1.id}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data.get("group"), "A")

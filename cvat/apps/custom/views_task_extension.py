@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from cvat.apps.engine.views import TaskViewSet as BaseTaskViewSet
 from cvat.apps.engine.models import Task
 from .serializers import TaskWithTrainMetadataSerializer, TaskTrainMetadataSerializer
-from .models import TaskTrainMetadata
+from .models import TaskTrainMetadata, TrainGroupMapping
 
 
 class ExtendedTaskViewSet(BaseTaskViewSet):
@@ -126,12 +126,18 @@ class ExtendedTaskViewSet(BaseTaskViewSet):
         })
 
     def list(self, request, *args, **kwargs):
-        """Override list to include train metadata in task listings."""
+        """Override list to include train metadata + group in task listings."""
         response = super().list(request, *args, **kwargs)
 
-        # Add train metadata summary to the response
+        # Add train metadata summary + group to the response
         if hasattr(response, 'data') and 'results' in response.data:
-            # Add summary statistics
+            train_ids = [r.get('train_id') for r in response.data['results'] if r.get('train_id')]
+            group_by_train = dict(
+                TrainGroupMapping.objects
+                .filter(train_id__in=train_ids)
+                .values_list('train_id', 'group')
+            )
+
             total_tasks = len(response.data['results'])
             verdict_counts = {'AC': 0, 'NA': 0, 'RJ': 0}
 
@@ -139,8 +145,8 @@ class ExtendedTaskViewSet(BaseTaskViewSet):
                 verdict = task_data.get('verdict', 'NA')
                 if verdict in verdict_counts:
                     verdict_counts[verdict] += 1
+                task_data['group'] = group_by_train.get(task_data.get('train_id'))
 
-            # Add metadata to response
             response.data['train_summary'] = {
                 'total_tasks': total_tasks,
                 'verdict_counts': verdict_counts,
@@ -150,13 +156,19 @@ class ExtendedTaskViewSet(BaseTaskViewSet):
         return response
 
     def retrieve(self, request, *args, **kwargs):
-        """Override retrieve to ensure train metadata is included."""
+        """Override retrieve to ensure train metadata + group are included."""
         response = super().retrieve(request, *args, **kwargs)
 
-        # Train metadata is already included via the serializer
-        # Just add a flag to indicate this is an extended response
         if hasattr(response, 'data'):
             response.data['has_train_metadata'] = True
+            train_id = response.data.get('train_id')
+            if train_id:
+                mapping = TrainGroupMapping.objects.filter(
+                    train_id=train_id,
+                ).only('group').first()
+                response.data['group'] = mapping.group if mapping else None
+            else:
+                response.data['group'] = None
 
         return response
 
