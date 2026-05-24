@@ -230,3 +230,65 @@ def parse_pasted(text: str) -> tuple[list[ParsedRow], list[ValidationError]]:
     fixed_errors = [ValidationError(line=e.line + offset if e.line > 1 else e.line,
                                     reason=e.reason, train_id=e.train_id) for e in errors]
     return fixed_rows, fixed_errors
+
+
+def compute_diff(new_rows: list[ParsedRow], current_qs) -> dict:
+    """
+    Compute the diff between a proposed mapping (new_rows) and the current state.
+
+    `current_qs` should be any iterable of objects exposing `train_id` and `group`
+    attributes (typically TrainGroupMapping.objects.all() or .values()).
+
+    Returns:
+        {
+            "added":   [{"train_id": "X", "group": "A"}, ...],
+            "removed": [{"train_id": "Y", "group": "B"}, ...],
+            "changed": [{"train_id": "Z", "old_group": "C", "new_group": "D"}, ...],
+            "counts":  {"added": int, "removed": int, "changed": int, "unchanged": int},
+        }
+    """
+    new_map: dict[str, str] = {r.train_id: r.group for r in new_rows}
+
+    current_map: dict[str, str] = {}
+    for obj in current_qs:
+        # Support both model instances and dicts from .values()
+        if isinstance(obj, dict):
+            current_map[obj["train_id"]] = obj["group"]
+        else:
+            current_map[obj.train_id] = obj.group
+
+    added: list[dict] = []
+    removed: list[dict] = []
+    changed: list[dict] = []
+    unchanged_count = 0
+
+    new_keys = set(new_map.keys())
+    current_keys = set(current_map.keys())
+
+    for tid in sorted(new_keys - current_keys):
+        added.append({"train_id": tid, "group": new_map[tid]})
+
+    for tid in sorted(current_keys - new_keys):
+        removed.append({"train_id": tid, "group": current_map[tid]})
+
+    for tid in sorted(new_keys & current_keys):
+        if new_map[tid] != current_map[tid]:
+            changed.append({
+                "train_id": tid,
+                "old_group": current_map[tid],
+                "new_group": new_map[tid],
+            })
+        else:
+            unchanged_count += 1
+
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "counts": {
+            "added": len(added),
+            "removed": len(removed),
+            "changed": len(changed),
+            "unchanged": unchanged_count,
+        },
+    }
