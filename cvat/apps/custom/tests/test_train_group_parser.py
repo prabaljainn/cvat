@@ -188,3 +188,57 @@ class ParseXlsxTest(SimpleTestCase):
         self.assertEqual(rows, [])
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors[0].line, 0)
+
+
+from cvat.apps.custom.train_group_parser import parse_pasted
+
+
+class ParsePastedTest(SimpleTestCase):
+    def test_tab_separated_with_header(self):
+        text = "train_id\tgroup\n3101F\tA\n3102F\tB\n"
+        rows, errors = parse_pasted(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            rows,
+            [
+                ParsedRow("3101F", "A", line_no=2),
+                ParsedRow("3102F", "B", line_no=3),
+            ],
+        )
+
+    def test_tab_separated_without_header(self):
+        # Excel's clipboard copy of two columns won't include a header
+        text = "3101F\tA\n3102F\tB\n"
+        rows, errors = parse_pasted(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            rows,
+            [
+                ParsedRow("3101F", "A", line_no=1),
+                ParsedRow("3102F", "B", line_no=2),
+            ],
+        )
+
+    def test_comma_separated_without_header(self):
+        text = "3101F,A\n3102F,B\n"
+        rows, errors = parse_pasted(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 2)
+
+    def test_rejects_single_column(self):
+        text = "3101F\n3102F\n"
+        rows, errors = parse_pasted(text)
+        self.assertEqual(rows, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("two columns", errors[0].reason)
+
+    def test_empty_pasted_text_clears(self):
+        rows, errors = parse_pasted("")
+        self.assertEqual(rows, [])
+        self.assertEqual(errors, [])
+
+    def test_carriage_returns_normalized(self):
+        text = "3101F\tA\r\n3102F\tB\r\n"
+        rows, errors = parse_pasted(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 2)

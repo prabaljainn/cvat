@@ -168,3 +168,65 @@ def parse_xlsx(file_bytes: bytes) -> tuple[list[ParsedRow], list[ValidationError
 
     csv_text = "\n".join(csv_lines)
     return parse_csv(csv_text)
+
+
+def parse_pasted(text: str) -> tuple[list[ParsedRow], list[ValidationError]]:
+    """
+    Parse text pasted from a spreadsheet.
+
+    Excel's default clipboard format is tab-separated and includes NO header.
+    We auto-detect the separator (tab if any line contains a tab, else comma)
+    and tolerate both header-present and header-absent input.
+
+    Returns the same shape as parse_csv. All-or-nothing on errors.
+    """
+    if not text.strip():
+        return [], []
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n").lstrip("﻿")
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+
+    # Determine separator
+    has_tab = any("\t" in ln for ln in lines)
+    sep = "\t" if has_tab else ","
+
+    first_cells = [c.strip().lower() for c in lines[0].split(sep)[:2]]
+    has_header = first_cells == list(_EXPECTED_HEADER)
+
+    # Validate at least two columns
+    sample = lines[0].split(sep)
+    if len(sample) < 2:
+        return [], [ValidationError(
+            line=1,
+            reason="expected two columns (train_id and group); could not detect separator",
+        )]
+
+    # Re-emit as canonical CSV with header so parse_csv handles validation
+    body_lines = lines[1:] if has_header else lines
+    csv_lines = ["train_id,group"]
+    for ln in body_lines:
+        cells = ln.split(sep)
+        train_id = cells[0].strip() if len(cells) > 0 else ""
+        group = cells[1].strip() if len(cells) > 1 else ""
+        # Naive CSV quoting: if either cell contains a comma, wrap it
+        if "," in train_id:
+            train_id = '"' + train_id.replace('"', '""') + '"'
+        if "," in group:
+            group = '"' + group.replace('"', '""') + '"'
+        csv_lines.append(f"{train_id},{group}")
+
+    csv_text = "\n".join(csv_lines)
+
+    # Re-run through parse_csv, then offset line numbers if the user pasted
+    # data-only (no header) so that errors point at the actual pasted line
+    rows, errors = parse_csv(csv_text)
+    if has_header:
+        return rows, errors
+
+    # parse_csv reports line_no relative to the CSV (header = line 1, first
+    # data row = line 2). For paste-without-header we want first data row = line 1.
+    offset = -1
+    fixed_rows = [ParsedRow(r.train_id, r.group, line_no=r.line_no + offset) for r in rows]
+    fixed_errors = [ValidationError(line=e.line + offset if e.line > 1 else e.line,
+                                    reason=e.reason, train_id=e.train_id) for e in errors]
+    return fixed_rows, fixed_errors
