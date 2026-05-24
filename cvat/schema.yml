@@ -1314,6 +1314,2363 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConsensusSettings'
           description: ''
+  /api/custom/comments:
+    get:
+      operationId: custom_list_comments
+      parameters:
+      - name: X-Organization
+        in: header
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: filter
+        required: false
+        in: query
+        description: |2-
+
+          JSON Logic filter. This filter can be used to perform complex filtering by grouping rules.
+
+          For example, using such a filter you can get all resources created by you:
+
+              - {"and":[{"==":[{"var":"owner"},"<user>"]}]}
+
+          Details about the syntax used can be found at the link: https://jsonlogic.com/
+
+           Available filter_fields: ['author', 'comment_type', 'parent_comment', 'task'].
+        schema:
+          type: string
+      - name: org
+        in: query
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: org_id
+        in: query
+        description: Organization identifier
+        schema:
+          type: integer
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: 'A search term. Available search_fields: [''author__username'',
+          ''message'']'
+        schema:
+          type: string
+      - name: sort
+        required: false
+        in: query
+        description: 'Which field to use when ordering the results. Available ordering_fields:
+          [''created_date'', ''id'', ''updated_date'']'
+        schema:
+          type: string
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskCommentSimpleList'
+          description: ''
+    post:
+      operationId: custom_create_comments
+      description: Create a new comment.
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCommentCreateRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskCommentCreate'
+          description: ''
+  /api/custom/comments/{id}:
+    get:
+      operationId: custom_retrieve_comments
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Task Comment.
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskComment'
+          description: ''
+    put:
+      operationId: custom_update_comments
+      description: Update comment (author only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Task Comment.
+        required: true
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCommentUpdateRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskCommentUpdate'
+          description: ''
+    patch:
+      operationId: custom_partial_update_comments
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Task Comment.
+        required: true
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskCommentUpdateRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskCommentUpdate'
+          description: ''
+    delete:
+      operationId: custom_destroy_comments
+      description: Delete comment (author only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Task Comment.
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/custom/comments/{id}/thread:
+    get:
+      operationId: custom_retrieve_comments_thread
+      description: Get full comment thread (parent + all replies).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Task Comment.
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskComment'
+          description: ''
+  /api/custom/comments/by_type:
+    get:
+      operationId: custom_retrieve_comments_by_type
+      description: Get comments filtered by type.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskComment'
+          description: ''
+  /api/custom/download-annotated-frames/:
+    get:
+      operationId: custom_retrieve_download_annotated_frames
+      description: |-
+        API endpoint to download annotated frames for a specific job and optional label.
+
+        Query Parameters:
+        - job_id (required): ID of the job
+        - label_id (optional): ID of the label to filter annotations
+
+        Returns:
+        - ZIP file containing annotated frames
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/download-task-frames/:
+    get:
+      operationId: custom_retrieve_download_task_frames
+      description: |-
+        Production-grade API endpoint to download annotated frames for an entire task.
+
+        Query Parameters:
+        - task_id (required): ID of the task
+        - label_id (optional): ID of the label to filter annotations
+
+        Returns:
+        - ZIP file containing all annotated frames from all jobs in the task
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/download-task-frames-optimized/:
+    get:
+      operationId: custom_retrieve_download_task_frames_optimized
+      description: |-
+        High-performance API endpoint to download annotated frames for an entire task.
+
+        Performance Optimizations:
+        - Bulk database queries with select_related/prefetch_related
+        - Parallel frame processing using ThreadPoolExecutor
+        - Streaming ZIP creation to reduce memory usage
+        - Frame caching and annotation batching
+        - Optimized image processing pipeline
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/export-task/:
+    get:
+      operationId: custom_retrieve_export_task
+      description: |-
+        CVAT-integrated export endpoint that leverages CVAT's export infrastructure
+        while adding custom label filtering and annotation overlay functionality.
+
+        This approach:
+        1. Uses CVAT's TaskAnnotation and export system
+        2. Adds custom label filtering
+        3. Provides annotated image overlays
+        4. Maintains compatibility with CVAT's architecture
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/formats/:
+    get:
+      operationId: custom_retrieve_formats
+      description: Get list of available export formats.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/jobs/{job_id}/frame/{frame_number}/:
+    get:
+      operationId: custom_retrieve_jobs_frame
+      description: |-
+        Get frame metadata and annotations for a specific frame.
+
+        Args:
+            job_id: Job identifier
+            frame_number: Frame number within the job
+
+        Returns:
+            JSON response with frame meta and annotations
+      parameters:
+      - in: path
+        name: frame_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: job_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/task-analysis/:
+    get:
+      operationId: custom_retrieve_task_analysis
+      description: |-
+        Comprehensive task analysis API that provides:
+        1. Basic task information (from CVAT's standard API)
+        2. Detailed annotation analysis by labels with frame arrays
+        3. Statistics and summaries
+
+        GET /api/custom/task-analysis/?task_id={id}
+
+        Returns label_id: [array of frames] format as requested.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/task-comments/create/:
+    post:
+      operationId: custom_create_task_comments_create
+      description: Create a new task comment.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/task-comments/stats/:
+    get:
+      operationId: custom_retrieve_task_comments_stats
+      description: Get comment statistics for a task or all tasks.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks-extended:
+    get:
+      operationId: custom_list_tasks_extended
+      description: Override list to include train metadata + group in task listings.
+      parameters:
+      - name: X-Organization
+        in: header
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: assignee
+        in: query
+        description: A simple equality filter for the assignee field
+        schema:
+          type: string
+      - name: dimension
+        in: query
+        description: A simple equality filter for the dimension field
+        schema:
+          type: string
+          enum:
+          - 1d
+          - 2d
+          - 3d
+      - name: filter
+        required: false
+        in: query
+        description: |2+
+
+          JSON Logic filter. This filter can be used to perform complex filtering by grouping rules.
+
+          For example, using such a filter you can get all resources created by you:
+
+              - {"and":[{"==":[{"var":"owner"},"<user>"]}]}
+
+          Details about the syntax used can be found at the link: https://jsonlogic.com/
+
+           Available filter_fields: ['assignee', 'dimension', 'id', 'media_type', 'mode', 'name', 'owner', 'project_id', 'project_name', 'status', 'subset', 'tracker_link', 'updated_date', 'validation_mode'].
+
+          There are few examples for complex filtering tasks:
+
+              - Get all tasks from 1,2,3 projects - { "and" : [{ "in" : [{ "var" : "project_id" }, [1, 2, 3]]}]}
+
+              - Get all completed tasks from 1 project - { "and": [{ "==": [{ "var" : "status" }, "completed"]}, { "==" : [{ "var" : "project_id"}, 1]}]}
+
+        schema:
+          type: string
+      - name: media_type
+        in: query
+        description: A simple equality filter for the media_type field
+        schema:
+          type: string
+          enum:
+          - image
+          - point_cloud
+          - audio
+      - name: mode
+        in: query
+        description: A simple equality filter for the mode field
+        schema:
+          type: string
+          enum:
+          - annotation
+          - interpolation
+      - name: name
+        in: query
+        description: A simple equality filter for the name field
+        schema:
+          type: string
+      - name: org
+        in: query
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: org_id
+        in: query
+        description: Organization identifier
+        schema:
+          type: integer
+      - name: owner
+        in: query
+        description: A simple equality filter for the owner field
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: project_id
+        in: query
+        description: A simple equality filter for the project_id field
+        schema:
+          type: integer
+      - name: project_name
+        in: query
+        description: A simple equality filter for the project_name field
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: 'A search term. Available search_fields: [''assignee'', ''name'',
+          ''owner'', ''project_name'', ''subset'', ''tracker_link'']'
+        schema:
+          type: string
+      - name: sort
+        required: false
+        in: query
+        description: 'Which field to use when ordering the results. Available ordering_fields:
+          [''assignee'', ''dimension'', ''id'', ''media_type'', ''mode'', ''name'',
+          ''owner'', ''project_id'', ''project_name'', ''status'', ''subset'', ''tracker_link'',
+          ''updated_date'', ''validation_mode'']'
+        schema:
+          type: string
+      - name: status
+        in: query
+        description: A simple equality filter for the status field
+        schema:
+          type: string
+          enum:
+          - annotation
+          - validation
+          - completed
+      - name: subset
+        in: query
+        description: A simple equality filter for the subset field
+        schema:
+          type: string
+      - name: tracker_link
+        in: query
+        description: A simple equality filter for the tracker_link field
+        schema:
+          type: string
+      - name: validation_mode
+        in: query
+        description: A simple equality filter for the validation_mode field
+        schema:
+          type: string
+          enum:
+          - gt
+          - gt_pool
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskWithTrainMetadataList'
+          description: ''
+    post:
+      operationId: custom_create_tasks_extended
+      description: |
+        The new task will not have any attached images or videos.
+        To attach them, use the /api/tasks/<id>/data endpoint.
+      summary: Create a task
+      parameters:
+      - in: header
+        name: X-Organization
+        schema:
+          type: string
+        description: Organization unique slug
+      - in: query
+        name: org
+        schema:
+          type: string
+        description: Organization unique slug
+      - in: query
+        name: org_id
+        schema:
+          type: integer
+        description: Organization identifier
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskWriteRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskRead'
+          description: ''
+  /api/custom/tasks-extended/{id}:
+    get:
+      operationId: custom_retrieve_tasks_extended
+      description: Override retrieve to ensure train metadata + group are included.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskWithTrainMetadata'
+          description: ''
+    patch:
+      operationId: custom_partial_update_tasks_extended
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Update a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskWriteRequest'
+            examples:
+              UpdateTaskProperties:
+                value:
+                  name: string
+                  owner_id: 0
+                  assignee_id: 0
+                  bug_tracker: string
+                  subset: string
+                  target_storage:
+                    location: cloud_storage
+                    cloud_storage_id: 0
+                  source_storage:
+                    location: cloud_storage
+                    cloud_storage_id: 0
+                summary: Update task properties
+              UpdateTaskLabels:
+                value:
+                  labels:
+                  - name: string
+                    color: string
+                    attributes: []
+                    deleted: false
+                    type: any
+                    svg: string
+                    sublabels:
+                    - name: string
+                      color: string
+                      attributes: []
+                      type: any
+                      has_parent: true
+                summary: Update task labels
+              MoveTaskToAProject:
+                value:
+                  project_id: 0
+                summary: Move task to a project
+              TransferTaskToPersonalSandbox:
+                value:
+                  organization_id: null
+                summary: Transfer task to personal sandbox
+              TransferTaskToOrganization:
+                value:
+                  organization_id: 1
+                summary: Transfer task to organization
+              TransferAStorageLinkedTaskToAnOrganizationAndDetachStorages:
+                value:
+                  organization_id: 1
+                  source_storage:
+                    location: local
+                    cloud_storage_id: null
+                  target_storage:
+                    location: local
+                    cloud_storage_id: null
+                summary: Transfer a storage linked task to an organization and detach
+                  storages
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskRead'
+          description: ''
+    delete:
+      operationId: custom_destroy_tasks_extended
+      description: All attached jobs, annotations and data will be deleted as well.
+      summary: Delete a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: The task has been deleted
+  /api/custom/tasks-extended/{id}/annotations/:
+    get:
+      operationId: custom_retrieve_tasks_extended_annotations
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Get task annotations
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/LabeledData'
+          description: ''
+        '400':
+          description: Exporting without data is not allowed
+        '410':
+          description: API endpoint no longer handles exporting process
+    post:
+      operationId: custom_create_tasks_extended_annotations
+      description: |2
+
+        The request POST /api/tasks/id/annotations initiates a background process to import annotations into a task.
+        Please, use the GET /api/requests/<rq_id> endpoint for checking status of the process.
+        The `rq_id` parameter can be found in the response on initiating request.
+      summary: Import annotations into a task
+      parameters:
+      - in: query
+        name: cloud_storage_id
+        schema:
+          type: integer
+        description: Storage id
+      - in: query
+        name: filename
+        schema:
+          type: string
+        description: Annotation file name
+      - in: query
+        name: format
+        schema:
+          type: string
+        description: |-
+          Input format name
+          You can get the list of supported formats at:
+          /server/annotation/formats
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      - in: query
+        name: import_mode
+        schema:
+          type: string
+          enum:
+          - append
+          - replace
+          default: replace
+        description: How to import annotations
+      - in: query
+        name: location
+        schema:
+          type: string
+          enum:
+          - cloud_storage
+          - local
+        description: where to import the annotation from
+      - in: query
+        name: use_default_location
+        schema:
+          type: boolean
+          default: true
+        description: Use the location that was configured in task to import annotations
+        deprecated: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationFileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AnnotationFileRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          description: Uploading has finished
+        '202':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: Uploading has been started
+        '405':
+          description: Format is not available
+    put:
+      operationId: custom_update_tasks_extended_annotations
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Replace task annotations
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabeledDataRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LabeledDataRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: Annotations have been replaced
+    patch:
+      operationId: custom_partial_update_tasks_extended_annotations
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Update task annotations
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+          enum:
+          - create
+          - delete
+          - update
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLabeledDataRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLabeledDataRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/LabeledData'
+          description: ''
+    delete:
+      operationId: custom_destroy_tasks_extended_annotations
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Delete task annotations
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: The annotation has been deleted
+  /api/custom/tasks-extended/{id}/backup/export:
+    post:
+      operationId: custom_create_tasks_extended_backup_export
+      description: |
+        The request `POST /api/<projects|tasks>/id/backup/export` will initialize
+        a background process to backup a resource. To check status of the process
+        please, use `GET /api/requests/<rq_id>` where **rq_id** is request ID returned in the response for this endpoint.
+      summary: Initiate process to backup resource
+      parameters:
+      - in: query
+        name: cloud_storage_id
+        schema:
+          type: integer
+        description: Storage id
+      - in: query
+        name: filename
+        schema:
+          type: string
+        description: Backup file name
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      - in: query
+        name: lightweight
+        schema:
+          type: boolean
+          default: true
+        description: Makes a lightweight backup (without media files) for tasks whose
+          media is located in cloud storage
+      - in: query
+        name: location
+        schema:
+          type: string
+          enum:
+          - cloud_storage
+          - local
+        description: Where need to save downloaded backup
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '202':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: Creating a backup file has been started
+        '400':
+          description: Wrong query parameters were passed
+        '409':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: The backup process has already been initiated and is not yet
+            finished
+  /api/custom/tasks-extended/{id}/data/:
+    get:
+      operationId: custom_retrieve_tasks_extended_data
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Get data of a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      - in: query
+        name: number
+        schema:
+          type: integer
+        description: A unique number value identifying chunk or frame
+      - in: query
+        name: quality
+        schema:
+          type: string
+          enum:
+          - compressed
+          - original
+        description: Specifies the quality level of the requested data
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - chunk
+          - context_image
+          - frame
+        description: Specifies the type of the requested data
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          headers:
+            X-Checksum:
+              schema:
+                type: string
+              description: Data checksum, applicable for chunks only
+            X-Updated-Date:
+              schema:
+                type: string
+                format: date-time
+              description: Data update date, applicable for chunks only
+          description: Data of a specific type
+        '206':
+          headers:
+            X-Checksum:
+              schema:
+                type: string
+              description: Data checksum, applicable for chunks only
+            X-Updated-Date:
+              schema:
+                type: string
+                format: date-time
+              description: Data update date, applicable for chunks only
+          description: Partial chunk data
+        '416':
+          description: Requested range is not satisfiable
+    post:
+      operationId: custom_create_tasks_extended_data
+      description: |
+        Allows to upload data (images, video, etc.) to a task.
+        Supports the TUS open file uploading protocol (https://tus.io/).
+
+        Supports the following protocols:
+
+        1. A single Data request
+
+        and
+
+        2.1. An Upload-Start request
+        2.2.a. Regular TUS protocol requests (Upload-Length + Chunks)
+        2.2.b. Upload-Multiple requests
+        2.3. An Upload-Finish request
+
+        Requests:
+        - Data - POST, no extra headers or 'Upload-Start' + 'Upload-Finish' headers.
+          Contains data in the body.
+        - Upload-Start - POST, has an 'Upload-Start' header. No body is expected.
+        - Upload-Length - POST, has an 'Upload-Length' header (see the TUS specification)
+        - Chunk - HEAD/PATCH (see the TUS specification). Sent to /data/<file id> endpoints.
+        - Upload-Finish - POST, has an 'Upload-Finish' header. Can contain data in the body.
+        - Upload-Multiple - POST, has an 'Upload-Multiple' header. Contains data in the body.
+
+        The 'Upload-Finish' request allows to specify the uploaded files should be ordered.
+        This may be needed if the files can be sent unordered. To state that the input files
+        are sent ordered, pass an empty list of files in the 'upload_file_order' field.
+        If the files are sent unordered, the ordered file list is expected
+        in the 'upload_file_order' field. It must be a list of string file paths,
+        relative to the dataset root.
+
+        Example:
+        files = [
+            "cats/cat_1.jpg",
+            "dogs/dog2.jpg",
+            "image_3.png",
+            ...
+        ]
+
+        Independently of the file declaration field used
+        ('client_files', 'server_files', etc.), when the 'predefined'
+        sorting method is selected, the uploaded files will be ordered according
+        to the '.jsonl' manifest file, if it is found in the list of files.
+        For archives (e.g. '.zip'), a manifest file ('*.jsonl') is required when using
+        the 'predefined' file ordering. Such file must be provided next to the archive
+        in the list of files. Read more about manifest files here:
+        https://docs.cvat.ai/docs/manual/advanced/dataset_manifest/
+
+        After all data is sent, the operation status can be retrieved via
+        the `GET /api/requests/<rq_id>`, where **rq_id** is request ID returned for this request.
+
+        Once data is attached to a task, it cannot be detached or replaced.
+      summary: Attach data to a task
+      parameters:
+      - in: header
+        name: Upload-Finish
+        schema:
+          type: boolean
+        description: Finishes data upload. Can be combined with Upload-Start header
+          to create task data with one request
+      - in: header
+        name: Upload-Multiple
+        schema:
+          type: boolean
+        description: Indicates that data with this request are single or multiple
+          files that should be attached to a task
+      - in: header
+        name: Upload-Start
+        schema:
+          type: boolean
+        description: Initializes data upload. Optionally, can include upload metadata
+          in the request body.
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '202':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+          description: Request to attach a data to a task has been accepted
+  /api/custom/tasks-extended/{id}/data/meta:
+    get:
+      operationId: custom_retrieve_tasks_extended_data_meta
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Get metainformation for media files in a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/DataMetaRead'
+          description: ''
+    patch:
+      operationId: custom_partial_update_tasks_extended_data_meta
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Update metainformation for media files in a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDataMetaWriteRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/DataMetaRead'
+          description: ''
+  /api/custom/tasks-extended/{id}/dataset/export:
+    post:
+      operationId: custom_create_tasks_extended_dataset_export
+      description: |
+        The request `POST /api/<projects|tasks|jobs>/id/dataset/export` will initialize
+        a background process to export a dataset. To check status of the process
+        please, use `GET /api/requests/<rq_id>` where **rq_id** is request ID returned in the response for this endpoint.
+      summary: Initialize process to export resource as a dataset in a specific format
+      parameters:
+      - in: query
+        name: cloud_storage_id
+        schema:
+          type: integer
+        description: Storage id
+      - in: query
+        name: filename
+        schema:
+          type: string
+        description: Desired output file name
+      - in: query
+        name: format
+        schema:
+          type: string
+        description: |-
+          Desired output format name
+          You can get the list of supported formats at:
+          /server/annotation/formats
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      - in: query
+        name: location
+        schema:
+          type: string
+          enum:
+          - cloud_storage
+          - local
+        description: Where need to save downloaded dataset
+      - in: query
+        name: save_images
+        schema:
+          type: boolean
+          default: false
+        description: Include images or not
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '202':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: Exporting has been started
+        '405':
+          description: Format is not available
+        '409':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: Exporting is already in progress
+  /api/custom/tasks-extended/{id}/preview:
+    get:
+      operationId: custom_retrieve_tasks_extended_preview
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Get a preview image for a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: Task image preview
+        '404':
+          description: Task image preview not found
+  /api/custom/tasks-extended/{id}/status:
+    get:
+      operationId: custom_retrieve_tasks_extended_status
+      description: 'This method is deprecated and will be removed in one of the next
+        releases. To check status of task creation, use new common API for managing
+        background operations: GET /api/requests/?action=create&task_id=<task_id>'
+      summary: Get the creation status of a task
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      deprecated: true
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqStatus'
+          description: ''
+  /api/custom/tasks-extended/{id}/train-metadata:
+    get:
+      operationId: custom_retrieve_tasks_extended_train_metadata
+      description: |-
+        Get or update train metadata for a specific task.
+
+        GET /api/tasks/{id}/train-metadata/ - Get train metadata
+        PATCH /api/tasks/{id}/train-metadata/ - Update train metadata
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskWithTrainMetadata'
+          description: ''
+    patch:
+      operationId: custom_partial_update_tasks_extended_train_metadata
+      description: |-
+        Get or update train metadata for a specific task.
+
+        GET /api/tasks/{id}/train-metadata/ - Get train metadata
+        PATCH /api/tasks/{id}/train-metadata/ - Update train metadata
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskWithTrainMetadataRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskWithTrainMetadata'
+          description: ''
+  /api/custom/tasks-extended/{id}/validation_layout:
+    get:
+      operationId: custom_retrieve_tasks_extended_validation_layout
+      description: |-
+        Extended Task ViewSet that includes train metadata in all CRUD operations.
+
+        This extends CVAT's standard Task API to include train metadata fields:
+        - train_id: Train event identifier
+        - verdict: AC/NA/RJ verdict
+        - train_notes: Optional notes
+        - confidence_score: Optional confidence score
+
+        All existing Task API functionality is preserved.
+      summary: Allows getting current validation configuration
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskValidationLayoutRead'
+          description: ''
+    patch:
+      operationId: custom_partial_update_tasks_extended_validation_layout
+      description: |2
+
+        WARNING: this operation is not protected from race conditions.
+        It's up to the user to ensure no parallel calls to this operation happen.
+        It affects image access, including exports with images, backups, chunk downloading etc.
+      summary: Allows updating current validation configuration
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskValidationLayoutWriteRequest'
+            examples:
+              SetHoneypotsToRandomValidationFrames:
+                value:
+                  frame_selection_method: random_uniform
+                summary: set honeypots to random validation frames
+              SetHoneypotsManually:
+                value:
+                  frame_selection_method: manual
+                  honeypot_real_frames:
+                  - 10
+                  - 20
+                  - 22
+                summary: set honeypots manually
+              DisableValidationFrames:
+                value:
+                  disabled_frames:
+                  - 4
+                  - 5
+                  - 8
+                summary: disable validation frames
+              RestoreAllValidationFrames:
+                value:
+                  disabled_frames: []
+                summary: restore all validation frames
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskValidationLayoutRead'
+          description: ''
+  /api/custom/tasks-extended/{id}/verdict:
+    patch:
+      operationId: custom_partial_update_tasks_extended_verdict
+      description: |-
+        Quick update of just the verdict for a task.
+
+        PATCH /api/tasks/{id}/verdict/
+        {
+            "verdict": "AC"  // AC, NA, or RJ
+        }
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaskWithTrainMetadataRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaskWithTrainMetadata'
+          description: ''
+  /api/custom/tasks-extended/backup/:
+    post:
+      operationId: custom_create_tasks_extended_backup
+      description: |2
+
+        The backup import process is as follows:
+
+        The first request POST /api/tasks/backup creates a background job on the server
+        in which the process of a task creating from an uploaded backup is carried out.
+
+        To check the status of the import process, use GET /api/requests/rq_id,
+        where rq_id is the request ID obtained from the response to the previous request.
+
+        Once the import completes successfully, the response will contain the ID
+        of the newly created task in the result_id field.
+      summary: Recreate a task from a backup
+      parameters:
+      - in: header
+        name: X-Organization
+        schema:
+          type: string
+        description: Organization unique slug
+      - in: query
+        name: cloud_storage_id
+        schema:
+          type: integer
+        description: Storage id
+      - in: query
+        name: filename
+        schema:
+          type: string
+        description: Backup file name
+      - in: query
+        name: location
+        schema:
+          type: string
+          enum:
+          - cloud_storage
+          - local
+          default: local
+        description: Where to import the backup file from
+      - in: query
+        name: org
+        schema:
+          type: string
+        description: Organization unique slug
+      - in: query
+        name: org_id
+        schema:
+          type: integer
+        description: Organization identifier
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskFileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskFileRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '202':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/RqId'
+          description: Import of the backup file has started
+  /api/custom/tasks-paginated/:
+    get:
+      operationId: custom_retrieve_tasks_paginated
+      description: |-
+        Handle GET request for unified tasks and analytics API.
+
+        Returns:
+            Response: JSON response with paginated tasks and optional analytics summary
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks-quick-stats/:
+    get:
+      operationId: custom_retrieve_tasks_quick_stats
+      description: |-
+        Quick statistics API for dashboard widgets.
+
+        GET /api/custom/tasks-quick-stats/
+
+        Returns quick stats without heavy computation:
+        - Task counts by verdict
+        - Recent activity
+        - Top projects
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks-summary/:
+    get:
+      operationId: custom_retrieve_tasks_summary
+      description: |-
+        Get comprehensive tasks summary with full filtering support.
+
+        This reuses the exact same filtering logic as TasksPaginatedView
+        but returns ONLY the analytics summary without the task list.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{id}/train-metadata/:
+    get:
+      operationId: custom_retrieve_tasks_train_metadata
+      description: Get train metadata for a task.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: custom_partial_update_tasks_train_metadata
+      description: Update train metadata for a task.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{id}/verdict/:
+    patch:
+      operationId: custom_partial_update_tasks_verdict
+      description: Update verdict for a task.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{task_id}/comments/:
+    get:
+      operationId: custom_list_tasks_comments
+      description: List comments with summary statistics.
+      parameters:
+      - name: X-Organization
+        in: header
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: filter
+        required: false
+        in: query
+        description: |2-
+
+          JSON Logic filter. This filter can be used to perform complex filtering by grouping rules.
+
+          For example, using such a filter you can get all resources created by you:
+
+              - {"and":[{"==":[{"var":"owner"},"<user>"]}]}
+
+          Details about the syntax used can be found at the link: https://jsonlogic.com/
+
+           Available filter_fields: ['author', 'comment_type', 'task'].
+        schema:
+          type: string
+      - name: org
+        in: query
+        description: Organization unique slug
+        schema:
+          type: string
+      - name: org_id
+        in: query
+        description: Organization identifier
+        schema:
+          type: integer
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: 'A search term. Available search_fields: [''author__username'',
+          ''message'']'
+        schema:
+          type: string
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskCommentSimpleList'
+          description: ''
+  /api/custom/tasks/{task_id}/comments/create/:
+    post:
+      operationId: custom_create_tasks_comments_create
+      description: Create a new task comment.
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{task_id}/videos/:
+    get:
+      operationId: custom_list_task_videos
+      description: |-
+        Get videos from task's server_files_path with presigned URLs.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            JSON response with video list and presigned URLs
+      summary: List all videos for a task
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{task_id}/videos/{video_path}/:
+    get:
+      operationId: custom_get_single_video
+      description: |-
+        Get presigned URL for a specific video.
+
+        Args:
+            task_id: Task ID
+            video_path: Relative path to video within server_files_path
+
+        Returns:
+            JSON response with presigned URL
+      summary: Get presigned URL for a specific video
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: video_path
+        schema:
+          type: string
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/tasks/{task_id}/videos/check/:
+    get:
+      operationId: custom_check_videos_availability
+      description: |-
+        Check if task has videos available.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            JSON response with video availability info
+      summary: Check if videos are available for a task
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-groups/mappings/:
+    get:
+      operationId: custom_list_train_groups_mappings
+      description: GET /api/train-groups/mappings/?search=&group=&page=&page_size=
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTrainGroupMappingList'
+          description: ''
+  /api/custom/train-groups/mappings/export.csv:
+    get:
+      operationId: custom_retrieve_train_groups_mappings_export.csv
+      description: GET /api/train-groups/mappings/export.csv — current mapping as
+        CSV.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-groups/mappings/template.csv:
+    get:
+      operationId: custom_retrieve_train_groups_mappings_template.csv
+      description: GET /api/train-groups/mappings/template.csv — blank example CSV.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-groups/mappings/upload/:
+    post:
+      operationId: custom_create_train_groups_mappings_upload
+      description: POST /api/train-groups/mappings/upload/
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-groups/versions/:
+    get:
+      operationId: custom_list_train_groups_versions
+      description: GET /api/train-groups/versions/
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTrainGroupMappingVersionListList'
+          description: ''
+  /api/custom/train-groups/versions/{version_no}/:
+    get:
+      operationId: custom_retrieve_train_groups_versions
+      description: GET /api/train-groups/versions/<version_no>/
+      parameters:
+      - in: path
+        name: version_no
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TrainGroupMappingVersionDetail'
+          description: ''
+  /api/custom/train-groups/versions/{version_no}/rollback/:
+    post:
+      operationId: custom_create_train_groups_versions_rollback
+      description: POST /api/train-groups/versions/<version_no>/rollback/
+      parameters:
+      - in: path
+        name: version_no
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-metadata/:
+    get:
+      operationId: custom_retrieve_train_metadata
+      description: Get train metadata for a task.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: custom_create_train_metadata
+      description: Create or update train metadata for a task.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-metadata-list/:
+    get:
+      operationId: custom_retrieve_train_metadata_list
+      description: List all tasks with train metadata.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/update-verdict/:
+    post:
+      operationId: custom_create_update_verdict
+      description: Update verdict for a task.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/events:
     get:
       operationId: events_list
@@ -7317,6 +9674,9 @@ components:
           maxLength: 150
       required:
       - username
+    BlankEnum:
+      enum:
+      - ''
     Chapter:
       type: object
       properties:
@@ -7516,6 +9876,22 @@ components:
           type: string
           format: date-time
           readOnly: true
+    CommentTypeEnum:
+      enum:
+      - GEN
+      - FB
+      - ISS
+      - REV
+      - NOTE
+      - Q
+      type: string
+      description: |-
+        * `GEN` - General
+        * `FB` - Feedback
+        * `ISS` - Issue
+        * `REV` - Review
+        * `NOTE` - Note
+        * `Q` - Question
     CommentWriteRequest:
       type: object
       properties:
@@ -7860,6 +10236,16 @@ components:
       required:
       - exporters
       - importers
+    Dimension:
+      enum:
+      - 1d
+      - 2d
+      - 3d
+      type: string
+      description: |-
+        * `1d` - DIM_1D
+        * `2d` - DIM_2D
+        * `3d` - DIM_3D
     Event:
       type: object
       properties:
@@ -9112,6 +11498,16 @@ components:
           minLength: 1
       required:
       - password
+    MediaType:
+      enum:
+      - image
+      - point_cloud
+      - audio
+      type: string
+      description: |-
+        * `image` - Image
+        * `point_cloud` - Point Cloud
+        * `audio` - Audio
     MembershipRead:
       type: object
       properties:
@@ -9585,6 +11981,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Request'
+    PaginatedTaskCommentSimpleList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskCommentSimple'
     PaginatedTaskReadList:
       type: object
       required:
@@ -9608,6 +12027,75 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskRead'
+    PaginatedTaskWithTrainMetadataList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskWithTrainMetadata'
+    PaginatedTrainGroupMappingList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainGroupMapping'
+    PaginatedTrainGroupMappingVersionListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainGroupMappingVersionList'
     PaginatedWebhookDeliveryReadList:
       type: object
       required:
@@ -10156,6 +12644,29 @@ components:
             accuracy in cases there are no annotations. If disabled, frames without annotations
             are counted as not matching (accuracy is 0). If enabled, accuracy will be 1 instead.
             This will also add virtual annotations to empty frames in the comparison results.
+    PatchedTaskCommentUpdateRequest:
+      type: object
+      description: |-
+        Serializer for updating task comments.
+
+        Only allows updating message and comment_type.
+      properties:
+        message:
+          type: string
+          minLength: 1
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
     PatchedTaskValidationLayoutWriteRequest:
       type: object
       properties:
@@ -10183,6 +12694,103 @@ components:
             minimum: 0
           description: |
             The list of frame ids. Applicable only to the "manual" frame selection method
+    PatchedTaskWithTrainMetadataRequest:
+      type: object
+      description: |-
+        Extended Task serializer that includes train metadata.
+        This can be used to extend the existing CVAT Task API.
+      properties:
+        train_id:
+          type: string
+          description: Train event identifier (defaults to task ID if not provided)
+        verdict:
+          allOf:
+          - $ref: '#/components/schemas/VerdictEnum'
+          default: NA
+          description: |-
+            Train verdict: AC (Accepted), NA (Not Applicable), RJ (Rejected)
+
+            * `AC` - Accepted
+            * `NA` - Not Applicable
+            * `RJ` - Rejected
+        train_notes:
+          type: string
+          nullable: true
+          description: Optional notes about the train event
+        confidence_score:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          nullable: true
+          description: Optional confidence score for the verdict (0.0 to 1.0)
+        server_files_path:
+          type: string
+          nullable: true
+          description: S3 prefix or server files path used for this task's data source
+          maxLength: 1024
+        assignee_updated_date:
+          type: string
+          format: date-time
+          nullable: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        bug_tracker:
+          type: string
+          maxLength: 2000
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        overlap:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        segment_size:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        dimension:
+          oneOf:
+          - $ref: '#/components/schemas/Dimension'
+          - $ref: '#/components/schemas/BlankEnum'
+        mode:
+          oneOf:
+          - $ref: '#/components/schemas/TaskMode'
+          - $ref: '#/components/schemas/BlankEnum'
+        media_type:
+          oneOf:
+          - $ref: '#/components/schemas/MediaType'
+          - $ref: '#/components/schemas/BlankEnum'
+        subset:
+          type: string
+          maxLength: 64
+        consensus_replicas:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        assignee:
+          type: integer
+          nullable: true
+        project:
+          type: integer
+          nullable: true
+        owner:
+          type: integer
+          nullable: true
+        data:
+          type: integer
+          nullable: true
+        organization:
+          type: integer
+          nullable: true
+        source_storage:
+          type: integer
+          nullable: true
+        target_storage:
+          type: integer
+          nullable: true
     PatchedTaskWriteRequest:
       type: object
       properties:
@@ -11346,6 +13954,262 @@ components:
           type: boolean
       required:
       - name
+    TaskComment:
+      type: object
+      description: |-
+        Serializer for TaskComment model with full details.
+
+        Features:
+        - Author information
+        - Reply count and threading
+        - Comment type display
+        - Edit tracking
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        task:
+          type: integer
+          description: Task this comment belongs to
+        author:
+          allOf:
+          - $ref: '#/components/schemas/TaskCommentAuthor'
+          readOnly: true
+        message:
+          type: string
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+        comment_type_display:
+          type: string
+          readOnly: true
+        parent_comment:
+          type: integer
+          nullable: true
+          description: Parent comment if this is a reply
+        is_reply:
+          type: boolean
+          readOnly: true
+        reply_count:
+          type: integer
+          readOnly: true
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_date:
+          type: string
+          format: date-time
+          readOnly: true
+        is_edited:
+          type: boolean
+          readOnly: true
+          description: True if comment has been edited after creation
+        replies:
+          type: string
+          readOnly: true
+      required:
+      - message
+      - task
+    TaskCommentAuthor:
+      type: object
+      description: Serializer for comment author information.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+    TaskCommentCreate:
+      type: object
+      description: |-
+        Serializer for creating new task comments.
+
+        Simplified for creation with validation.
+      properties:
+        task:
+          type: integer
+          description: Task this comment belongs to
+        message:
+          type: string
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+        parent_comment:
+          type: integer
+          nullable: true
+          description: Parent comment if this is a reply
+      required:
+      - message
+      - task
+    TaskCommentCreateRequest:
+      type: object
+      description: |-
+        Serializer for creating new task comments.
+
+        Simplified for creation with validation.
+      properties:
+        task:
+          type: integer
+          description: Task this comment belongs to
+        message:
+          type: string
+          minLength: 1
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+        parent_comment:
+          type: integer
+          nullable: true
+          description: Parent comment if this is a reply
+      required:
+      - message
+      - task
+    TaskCommentSimple:
+      type: object
+      description: |-
+        Simplified TaskComment serializer for nested use and lists.
+
+        Avoids deep nesting and heavy queries for better performance.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        author:
+          allOf:
+          - $ref: '#/components/schemas/TaskCommentAuthor'
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          readOnly: true
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+        comment_type_display:
+          type: string
+          readOnly: true
+        parent_comment:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Parent comment if this is a reply
+        is_reply:
+          type: boolean
+          readOnly: true
+        reply_count:
+          type: integer
+          readOnly: true
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_date:
+          type: string
+          format: date-time
+          readOnly: true
+        is_edited:
+          type: boolean
+          readOnly: true
+          description: True if comment has been edited after creation
+    TaskCommentUpdate:
+      type: object
+      description: |-
+        Serializer for updating task comments.
+
+        Only allows updating message and comment_type.
+      properties:
+        message:
+          type: string
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+      required:
+      - message
+    TaskCommentUpdateRequest:
+      type: object
+      description: |-
+        Serializer for updating task comments.
+
+        Only allows updating message and comment_type.
+      properties:
+        message:
+          type: string
+          minLength: 1
+          description: Comment content
+        comment_type:
+          allOf:
+          - $ref: '#/components/schemas/CommentTypeEnum'
+          description: |-
+            Comment category for organization
+
+            * `GEN` - General
+            * `FB` - Feedback
+            * `ISS` - Issue
+            * `REV` - Review
+            * `NOTE` - Note
+            * `Q` - Question
+      required:
+      - message
     TaskFileRequest:
       type: object
       properties:
@@ -11354,6 +14218,14 @@ components:
           format: binary
       required:
       - task_file
+    TaskMode:
+      enum:
+      - annotation
+      - interpolation
+      type: string
+      description: |-
+        * `annotation` - Annotation
+        * `interpolation` - Interpolation
     TaskRead:
       type: object
       properties:
@@ -11488,6 +14360,84 @@ components:
       required:
       - jobs
       - labels
+    TaskTrainMetadata:
+      type: object
+      description: Serializer for TaskTrainMetadata model.
+      properties:
+        train_id:
+          type: string
+          description: Train event identifier (defaults to task ID)
+          maxLength: 100
+        verdict:
+          allOf:
+          - $ref: '#/components/schemas/VerdictEnum'
+          description: |-
+            Train verdict: AC (Accepted), NA (Not Applicable), RJ (Rejected)
+
+            * `AC` - Accepted
+            * `NA` - Not Applicable
+            * `RJ` - Rejected
+        verdict_display:
+          type: string
+          readOnly: true
+        notes:
+          type: string
+          nullable: true
+          description: Optional notes about the train event
+        confidence_score:
+          type: number
+          format: double
+          nullable: true
+          description: Optional confidence score for the verdict (0.0 to 1.0)
+        server_files_path:
+          type: string
+          nullable: true
+          description: S3 prefix or server files path used for this task's data source
+          maxLength: 1024
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_date:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - train_id
+    TaskTrainMetadataRequest:
+      type: object
+      description: Serializer for TaskTrainMetadata model.
+      properties:
+        train_id:
+          type: string
+          minLength: 1
+          description: Train event identifier (defaults to task ID)
+          maxLength: 100
+        verdict:
+          allOf:
+          - $ref: '#/components/schemas/VerdictEnum'
+          description: |-
+            Train verdict: AC (Accepted), NA (Not Applicable), RJ (Rejected)
+
+            * `AC` - Accepted
+            * `NA` - Not Applicable
+            * `RJ` - Rejected
+        notes:
+          type: string
+          nullable: true
+          description: Optional notes about the train event
+        confidence_score:
+          type: number
+          format: double
+          nullable: true
+          description: Optional confidence score for the verdict (0.0 to 1.0)
+        server_files_path:
+          type: string
+          nullable: true
+          description: S3 prefix or server files path used for this task's data source
+          maxLength: 1024
+      required:
+      - train_id
     TaskValidationLayoutRead:
       type: object
       properties:
@@ -11532,6 +14482,119 @@ components:
             minimum: 0
           description: |
             The list of real (validation) frame ids for all honeypots in the task
+    TaskWithTrainMetadata:
+      type: object
+      description: |-
+        Extended Task serializer that includes train metadata.
+        This can be used to extend the existing CVAT Task API.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        train_metadata:
+          allOf:
+          - $ref: '#/components/schemas/TaskTrainMetadata'
+          readOnly: true
+        train_id:
+          type: string
+          description: Train event identifier (defaults to task ID if not provided)
+        verdict:
+          allOf:
+          - $ref: '#/components/schemas/VerdictEnum'
+          default: NA
+          description: |-
+            Train verdict: AC (Accepted), NA (Not Applicable), RJ (Rejected)
+
+            * `AC` - Accepted
+            * `NA` - Not Applicable
+            * `RJ` - Rejected
+        train_notes:
+          type: string
+          nullable: true
+          description: Optional notes about the train event
+        confidence_score:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          nullable: true
+          description: Optional confidence score for the verdict (0.0 to 1.0)
+        server_files_path:
+          type: string
+          nullable: true
+          description: S3 prefix or server files path used for this task's data source
+          maxLength: 1024
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_date:
+          type: string
+          format: date-time
+          readOnly: true
+        assignee_updated_date:
+          type: string
+          format: date-time
+          nullable: true
+        name:
+          type: string
+          maxLength: 256
+        bug_tracker:
+          type: string
+          maxLength: 2000
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        overlap:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        segment_size:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        dimension:
+          oneOf:
+          - $ref: '#/components/schemas/Dimension'
+          - $ref: '#/components/schemas/BlankEnum'
+        mode:
+          oneOf:
+          - $ref: '#/components/schemas/TaskMode'
+          - $ref: '#/components/schemas/BlankEnum'
+        media_type:
+          oneOf:
+          - $ref: '#/components/schemas/MediaType'
+          - $ref: '#/components/schemas/BlankEnum'
+        subset:
+          type: string
+          maxLength: 64
+        consensus_replicas:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        assignee:
+          type: integer
+          nullable: true
+        project:
+          type: integer
+          nullable: true
+        owner:
+          type: integer
+          nullable: true
+        data:
+          type: integer
+          nullable: true
+        organization:
+          type: integer
+          nullable: true
+        source_storage:
+          type: integer
+          nullable: true
+        target_storage:
+          type: integer
+          nullable: true
+      required:
+      - name
     TaskWriteRequest:
       type: object
       properties:
@@ -11679,6 +14742,102 @@ components:
       required:
       - frame
       - type
+    TrainGroupMapping:
+      type: object
+      description: Read-only representation of one train_id → group row.
+      properties:
+        train_id:
+          type: string
+          readOnly: true
+        group:
+          type: string
+          readOnly: true
+        updated_by_username:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    TrainGroupMappingVersionDetail:
+      type: object
+      description: Includes the full csv_text and diff_summary for a single version.
+      properties:
+        version_no:
+          type: integer
+          readOnly: true
+        uploaded_by_username:
+          type: string
+          readOnly: true
+        uploaded_at:
+          type: string
+          format: date-time
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        source_format:
+          type: string
+          readOnly: true
+          description: 'One of: csv, xlsx, paste, rollback'
+        row_count:
+          type: integer
+          readOnly: true
+        is_current:
+          type: boolean
+          readOnly: true
+        source_version:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Set when this version was produced by rolling back to source_version.
+        counts:
+          type: string
+          readOnly: true
+        csv_text:
+          type: string
+          readOnly: true
+          description: Canonical CSV form (xlsx/paste uploads normalized to CSV).
+        diff_summary:
+          type: object
+          readOnly: true
+          description: 'Pre-computed diff vs previous current version: {added: [...],
+            removed: [...], changed: [...], counts: {...}}'
+    TrainGroupMappingVersionList:
+      type: object
+      description: Light serializer for the version-history list endpoint.
+      properties:
+        version_no:
+          type: integer
+          readOnly: true
+        uploaded_by_username:
+          type: string
+          readOnly: true
+        uploaded_at:
+          type: string
+          format: date-time
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        source_format:
+          type: string
+          readOnly: true
+          description: 'One of: csv, xlsx, paste, rollback'
+        row_count:
+          type: integer
+          readOnly: true
+        is_current:
+          type: boolean
+          readOnly: true
+        source_version:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Set when this version was produced by rolling back to source_version.
+        counts:
+          type: string
+          readOnly: true
     User:
       type: object
       properties:
@@ -11813,6 +14972,16 @@ components:
             Applicable only to the "random_per_job" frame selection method
       required:
       - mode
+    VerdictEnum:
+      enum:
+      - AC
+      - NA
+      - RJ
+      type: string
+      description: |-
+        * `AC` - Accepted
+        * `NA` - Not Applicable
+        * `RJ` - Rejected
     WebhookContentType:
       enum:
       - application/json
