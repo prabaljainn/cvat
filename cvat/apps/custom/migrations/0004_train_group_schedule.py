@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
             model_name="traingroupmapping",
             index=models.Index(
                 fields=["group", "train_id"],
-                name="custom_trai_group_b3e02a_idx",
+                name="custom_trai_group_161b56_idx",
             ),
         ),
         migrations.CreateModel(
