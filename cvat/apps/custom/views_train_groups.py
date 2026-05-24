@@ -43,6 +43,7 @@ class MappingsListView(ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = TrainGroupMappingSerializer
     pagination_class = _MappingPagination
+    filter_backends = []   # opt out of CVAT's IAM-aware filter chain — schema gen otherwise crashes
 
     def get_queryset(self):
         qs = TrainGroupMapping.objects.select_related("updated_by").order_by("train_id")
@@ -267,6 +268,7 @@ class VersionsListView(ListAPIView):
     permission_classes = MAPPING_ADMIN_PERMISSIONS
     serializer_class = TrainGroupMappingVersionListSerializer
     pagination_class = _MappingPagination
+    filter_backends = []   # opt out of CVAT's IAM-aware filter chain — schema gen otherwise crashes
 
     def get_queryset(self):
         return (
@@ -282,6 +284,7 @@ class VersionDetailView(RetrieveAPIView):
     serializer_class = TrainGroupMappingVersionDetailSerializer
     queryset = TrainGroupMappingVersion.objects.all()
     lookup_field = "version_no"
+    filter_backends = []   # opt out of CVAT's IAM-aware filter chain — schema gen otherwise crashes
 
 
 from django.shortcuts import get_object_or_404
