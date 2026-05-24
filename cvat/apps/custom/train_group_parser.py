@@ -292,3 +292,73 @@ def compute_diff(new_rows: list[ParsedRow], current_qs) -> dict:
             "unchanged": unchanged_count,
         },
     }
+
+
+def apply_upload(
+    rows: list[ParsedRow],
+    user,
+    comment: str,
+    raw_input_text: str,
+    source_format: str,
+    source_version=None,
+):
+    """
+    Apply a parsed mapping atomically.
+
+    Steps inside a single transaction:
+      1. Lock and clear `is_current` on the existing current version (if any).
+      2. Create the new Version row with computed diff_summary and is_current=True.
+      3. Delete all existing TrainGroupMapping rows.
+      4. Bulk-insert the new rows.
+
+    Returns the new TrainGroupMappingVersion instance.
+    """
+    # Imported lazily so this module stays importable in test contexts that
+    # haven't configured Django apps yet.
+    from django.db import transaction
+    from django.db.models import Max
+    from .models import TrainGroupMapping, TrainGroupMappingVersion
+
+    with transaction.atomic():
+        # Lock current rows (no-op when none exist; on the first upload there's
+        # nothing to lock). select_for_update on an empty result is fine.
+        current = (
+            TrainGroupMappingVersion.objects
+            .select_for_update()
+            .filter(is_current=True)
+            .first()
+        )
+
+        diff = compute_diff(rows, TrainGroupMapping.objects.all())
+
+        if current is not None:
+            current.is_current = False
+            current.save(update_fields=["is_current"])
+
+        next_no = (
+            TrainGroupMappingVersion.objects.aggregate(m=Max("version_no"))["m"] or 0
+        ) + 1
+
+        version = TrainGroupMappingVersion.objects.create(
+            version_no=next_no,
+            uploaded_by=user,
+            comment=comment,
+            csv_text=raw_input_text,
+            source_format=source_format,
+            row_count=len(rows),
+            is_current=True,
+            source_version=source_version,
+            diff_summary=diff,
+        )
+
+        # Replace mapping table contents
+        TrainGroupMapping.objects.all().delete()
+        TrainGroupMapping.objects.bulk_create(
+            [
+                TrainGroupMapping(train_id=r.train_id, group=r.group, updated_by=user)
+                for r in rows
+            ],
+            batch_size=1000,
+        )
+
+    return version
