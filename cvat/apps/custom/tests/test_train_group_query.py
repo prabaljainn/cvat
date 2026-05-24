@@ -30,3 +30,18 @@ class AnnotateTrainGroupTest(TestCase):
             list(annotate_train_group(Task.objects.all().order_by("id")))
         # One SELECT — the Subquery is inlined; no N+1
         self.assertLessEqual(len(ctx.captured_queries), 2)
+
+    def test_annotates_when_queryset_uses_prefetch_related(self):
+        """
+        Regression: the dashboard view does
+            Task.objects.select_related(...).prefetch_related('train_metadata')
+        and prefetch_related does NOT add a JOIN. An earlier version of the
+        helper used OuterRef('train_metadata__train_id'), which silently
+        returned NULL in that context. This guards against that recurrence.
+        """
+        qs = annotate_train_group(
+            Task.objects.prefetch_related("train_metadata").order_by("id")
+        )
+        results = {t.id: t.train_group for t in qs}
+        self.assertEqual(results[self.task_a.id], "A")
+        self.assertIsNone(results[self.task_b.id])
