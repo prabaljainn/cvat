@@ -84,10 +84,9 @@ urlpatterns = [
     path('tasks/<int:task_id>/videos/<path:video_path>/', views_s3_videos.TaskSingleVideoView.as_view(),
          name='task-single-video'),
 
-    # Train group schedule endpoints (Task 11–17 will fill in views)
-    # path('train-groups/mappings/', views_train_groups.MappingsListView.as_view(),
-    #      name='train-groups-mappings'),
-    # (intentionally commented until views land in later tasks)
+    # Train group schedule endpoints
+    path('train-groups/mappings/', views_train_groups.MappingsListView.as_view(),
+         name='train-groups-mappings'),
 ]
 
 # Add the router URLs

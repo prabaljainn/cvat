@@ -22,3 +22,34 @@ from rest_framework import permissions
 # `createsuperuser` are also is_staff, so both groups pass. To restrict further
 # (e.g., to a custom Django Group or a CVAT IAM role), replace this list.
 MAPPING_ADMIN_PERMISSIONS = [permissions.IsAdminUser]
+
+
+from django.db.models import Q
+from rest_framework.generics import ListAPIView
+from rest_framework.pagination import PageNumberPagination
+
+from .models import TrainGroupMapping
+from .serializers import TrainGroupMappingSerializer
+
+
+class _MappingPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 500
+
+
+class MappingsListView(ListAPIView):
+    """GET /api/train-groups/mappings/?search=&group=&page=&page_size="""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TrainGroupMappingSerializer
+    pagination_class = _MappingPagination
+
+    def get_queryset(self):
+        qs = TrainGroupMapping.objects.select_related("updated_by").order_by("train_id")
+        search = self.request.query_params.get("search", "").strip()
+        group = self.request.query_params.get("group", "").strip()
+        if group:
+            qs = qs.filter(group=group)
+        if search:
+            qs = qs.filter(Q(train_id__icontains=search) | Q(group__icontains=search))
+        return qs
