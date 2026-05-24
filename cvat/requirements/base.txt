@@ -110,6 +110,8 @@ easyprocess==1.1
     # via pyunpack
 entrypoint2==1.1
     # via pyunpack
+et-xmlfile==1.1.0
+    # via openpyxl
 fonttools==4.58.4
     # via matplotlib
 freezegun==1.5.2
@@ -195,6 +197,8 @@ oauthlib==3.3.1
     # via requests-oauthlib
 orjson==3.11.7
     # via datumaro
+openpyxl==3.1.5
+    # via -r cvat/requirements/base.in
 packaging==25.0
     # via
     #   djangorestframework-api-key
