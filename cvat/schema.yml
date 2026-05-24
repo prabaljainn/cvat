@@ -3478,39 +3478,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedTrainGroupMappingList'
           description: ''
-  /api/custom/train-groups/mappings/export.csv:
-    get:
-      operationId: custom_retrieve_train_groups_mappings_export.csv
-      description: GET /api/train-groups/mappings/export.csv — current mapping as
-        CSV.
-      tags:
-      - custom
-      security:
-      - tokenAuth: []
-      - accessTokenAuth: []
-      - sessionAuth: []
-        csrfAuth: []
-        csrfHeaderAuth: []
-      - basicAuth: []
-      responses:
-        '200':
-          description: No response body
-  /api/custom/train-groups/mappings/template.csv:
-    get:
-      operationId: custom_retrieve_train_groups_mappings_template.csv
-      description: GET /api/train-groups/mappings/template.csv — blank example CSV.
-      tags:
-      - custom
-      security:
-      - tokenAuth: []
-      - accessTokenAuth: []
-      - sessionAuth: []
-        csrfAuth: []
-        csrfHeaderAuth: []
-      - basicAuth: []
-      responses:
-        '200':
-          description: No response body
   /api/custom/train-groups/mappings/upload/:
     post:
       operationId: custom_create_train_groups_mappings_upload
