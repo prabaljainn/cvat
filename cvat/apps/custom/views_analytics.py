@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 
 from cvat.apps.engine.models import Task, Job, LabeledShape, LabeledImage, TrackedShape
-from .models import TaskTrainMetadata
+from .models import TaskTrainMetadata, TrainGroupMapping
 from .train_group_query import annotate_train_group, filter_by_group
 
 
@@ -563,6 +563,8 @@ class TasksSummaryView(APIView):
             ).prefetch_related(
                 'train_metadata'
             ).all()
+            queryset = annotate_train_group(queryset)
+            queryset = filter_by_group(queryset, request.query_params.get("group"))
 
             # Apply filters (EXACT SAME LOGIC as tasks-paginated)
             if project_id_filter:
@@ -677,6 +679,21 @@ class TasksSummaryView(APIView):
                 updated_after,
                 updated_before
             )
+
+            # available_groups: distinct groups + task count (independent of current
+            # ?group= filter). Counts tasks whose train_id maps to each group.
+            tid_to_group = dict(TrainGroupMapping.objects.values_list("train_id", "group"))
+            group_count_map: dict[str, int] = {}
+            for tid in TaskTrainMetadata.objects.filter(
+                train_id__in=tid_to_group.keys()
+            ).values_list("train_id", flat=True):
+                g = tid_to_group.get(tid)
+                if g:
+                    group_count_map[g] = group_count_map.get(g, 0) + 1
+            analytics_data["available_groups"] = [
+                {"name": name, "count": count}
+                for name, count in sorted(group_count_map.items())
+            ]
 
             # Return ONLY the analytics summary
             return Response(analytics_data)

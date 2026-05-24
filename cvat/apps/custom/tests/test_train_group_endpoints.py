@@ -275,3 +275,30 @@ class TasksPaginatedGroupFilterTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data["results"]), 1)
         self.assertEqual(resp.data["results"][0]["train_metadata"]["train_id"], "3199Z")
+
+
+class TasksSummaryAvailableGroupsTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("u2", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        owner = User.objects.create_user("owner2")
+        t1 = Task.objects.create(name="t1", owner=owner)
+        t2 = Task.objects.create(name="t2", owner=owner)
+        t3 = Task.objects.create(name="t3", owner=owner)
+        TaskTrainMetadata.objects.create(task=t1, train_id="3101F")
+        TaskTrainMetadata.objects.create(task=t2, train_id="3102F")
+        TaskTrainMetadata.objects.create(task=t3, train_id="3103F")
+        TrainGroupMapping.objects.create(train_id="3101F", group="A")
+        TrainGroupMapping.objects.create(train_id="3102F", group="A")
+        TrainGroupMapping.objects.create(train_id="3103F", group="B")
+
+    def test_available_groups_lists_groups_with_counts(self):
+        resp = self.client.get("/api/tasks-summary/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("available_groups", resp.data)
+        by_name = {g["name"]: g["count"] for g in resp.data["available_groups"]}
+        # Counts reflect mapped tasks regardless of filter
+        self.assertEqual(by_name.get("A"), 2)
+        self.assertEqual(by_name.get("B"), 1)
