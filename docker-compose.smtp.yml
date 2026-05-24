@@ -23,7 +23,7 @@ services:
         Site.objects.update_or_create(pk=1, defaults={'domain': domain, 'name': 'CVAT'})
         print('[site-init] Site domain set to:', Site.objects.get(pk=1).domain)
         "
-        exec ./backend_entrypoint.sh run server
+        exec ./backend_entrypoint.sh run server nginx
 
   cvat_worker_utils:
     environment:
