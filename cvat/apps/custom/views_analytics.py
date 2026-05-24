@@ -18,6 +18,7 @@ from rest_framework.pagination import PageNumberPagination
 
 from cvat.apps.engine.models import Task, Job, LabeledShape, LabeledImage, TrackedShape
 from .models import TaskTrainMetadata
+from .train_group_query import annotate_train_group, filter_by_group
 
 
 class TaskAnalyticsPagination(PageNumberPagination):
@@ -92,6 +93,8 @@ class TasksPaginatedView(APIView):
             ).prefetch_related(
                 'train_metadata'
             ).order_by('-id')
+            queryset = annotate_train_group(queryset)
+            queryset = filter_by_group(queryset, request.query_params.get("group"))
 
             # Apply filters
             if project_id_filter:
@@ -221,6 +224,7 @@ class TasksPaginatedView(APIView):
                         "owner": task.owner.username if task.owner else None,
                         "assignee": task.assignee.username if task.assignee else None,
                         "status": task.status,
+                        "group": getattr(task, "train_group", None),
 
                         # Train metadata
                         "train_metadata": {

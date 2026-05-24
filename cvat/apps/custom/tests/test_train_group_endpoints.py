@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from cvat.apps.custom.models import TrainGroupMapping
+from cvat.apps.custom.models import TaskTrainMetadata, TrainGroupMapping
 
 
 class MappingsListViewTest(TestCase):
@@ -232,3 +232,46 @@ class RollbackTest(TestCase):
         client = APIClient(); client.force_authenticate(regular)
         resp = client.post("/api/train-groups/versions/1/rollback/", format="json")
         self.assertEqual(resp.status_code, 403)
+
+
+from cvat.apps.engine.models import Task
+
+
+class TasksPaginatedGroupFilterTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("u1", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        owner = User.objects.create_user("owner")
+        self.t1 = Task.objects.create(name="t1", owner=owner)
+        self.t2 = Task.objects.create(name="t2", owner=owner)
+        TaskTrainMetadata.objects.create(task=self.t1, train_id="3101F")
+        TaskTrainMetadata.objects.create(task=self.t2, train_id="3199Z")
+        TrainGroupMapping.objects.create(train_id="3101F", group="A")
+
+    def test_response_includes_group_field(self):
+        resp = self.client.get("/api/tasks-paginated/?include_analytics=false")
+        self.assertEqual(resp.status_code, 200)
+        groups_by_train = {
+            r["train_metadata"]["train_id"]: r.get("group")
+            for r in resp.data["results"]
+        }
+        self.assertEqual(groups_by_train["3101F"], "A")
+        self.assertIsNone(groups_by_train["3199Z"])
+
+    def test_filter_by_group(self):
+        resp = self.client.get(
+            "/api/tasks-paginated/?include_analytics=false&group=A",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["train_metadata"]["train_id"], "3101F")
+
+    def test_filter_ungrouped(self):
+        resp = self.client.get(
+            "/api/tasks-paginated/?include_analytics=false&group=__ungrouped__",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["train_metadata"]["train_id"], "3199Z")
