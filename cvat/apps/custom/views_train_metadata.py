@@ -55,9 +55,17 @@ class TrainMetadataView(APIView):
         # Get or create train metadata
         train_metadata, created = TaskTrainMetadata.get_or_create_for_task(task)
 
+        # Train group lookup (cheap PK indexed lookup; None when unmapped)
+        from .models import TrainGroupMapping
+        mapping = TrainGroupMapping.objects.filter(
+            train_id=train_metadata.train_id,
+        ).only("group").first()
+        group = mapping.group if mapping else None
+
         return Response({
             "task_id": task.id,
             "task_name": task.name,
+            "group": group,
             "train_metadata": {
                 "train_id": train_metadata.train_id,
                 "verdict": train_metadata.verdict,

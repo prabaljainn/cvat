@@ -116,7 +116,16 @@ class TaskAnalysisView(APIView):
         # Get or create train metadata for this task
         train_metadata, created = TaskTrainMetadata.get_or_create_for_task(task)
 
+        # Lookup train_id → group from the mapping table (one indexed PK
+        # lookup; cheap). Returns None when the train_id has no mapping.
+        from .models import TrainGroupMapping
+        mapping = TrainGroupMapping.objects.filter(
+            train_id=train_metadata.train_id,
+        ).only("group").first()
+        group = mapping.group if mapping else None
+
         basic_info = {
+            "group": group,
             "id": task.id,
             "name": task.name,
             "project_id": task.project.id if task.project else None,

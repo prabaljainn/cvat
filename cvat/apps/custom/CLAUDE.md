@@ -32,19 +32,21 @@ So a route `path("foo/", ...)` becomes **`/api/custom/foo/`** at runtime, NOT `/
 - `TrainGroupMappingSerializer`, `TrainGroupMappingVersionListSerializer`, `TrainGroupMappingVersionDetailSerializer`
 
 ### Views
-| File | Purpose | Schema status |
-|---|---|---|
-| `views.py` | Frame downloads | APIView, no schema |
-| `views_optimized.py` | Optimized frame downloads | APIView, no schema |
-| `views_cvat_integrated.py` | Task export, formats list | APIView, no schema |
-| `views_task_analysis.py` | Task analysis | APIView, no schema |
-| `views_train_metadata.py` | Original train metadata CRUD | APIView, no schema |
-| `views_task_extension.py` | `ExtendedTaskViewSet` (DRF router, **no trailing slash**), task-level train metadata APIs | ViewSet — schema-tracked |
-| `views_analytics.py` | `tasks-paginated`, `tasks-summary`, `tasks-quick-stats` | APIView |
-| `views_task_comments.py` | Task comments (existing user code) | **excluded from schema** via `@extend_schema_view(... exclude=True)` |
-| `views_frame_data.py` | Per-frame data | APIView, no schema |
-| `views_s3_videos.py` | S3 video presigned URLs | APIView, no schema |
-| `views_train_groups.py` | **NEW** Train group schedule — mappings list/template/export/upload, versions list/detail/rollback | mixed; CSV-download views excluded via `@extend_schema(exclude=True)` |
+| File | Purpose | Schema status | Returns `group`? |
+|---|---|---|---|
+| `views.py` | Frame downloads | APIView, no schema | n/a |
+| `views_optimized.py` | Optimized frame downloads | APIView, no schema | n/a |
+| `views_cvat_integrated.py` | Task export, formats list | APIView, no schema | n/a |
+| `views_task_analysis.py` | `task-analysis/?task_id=` (used by Task Details page) | APIView, no schema | ✅ `group` in basic_info |
+| `views_train_metadata.py` | Original train metadata CRUD | APIView, no schema | ✅ `group` at top level |
+| `views_task_extension.py` | `ExtendedTaskViewSet` (DRF router, **no trailing slash**), task-level train metadata APIs | ViewSet — schema-tracked | ✅ `group` in retrieve + list |
+| `views_analytics.py` | `tasks-paginated`, `tasks-summary`, `tasks-quick-stats` | APIView | ✅ `group` per row + `available_groups` |
+| `views_task_comments.py` | Task comments (existing user code) | **excluded from schema** via `@extend_schema_view(... exclude=True)` | n/a |
+| `views_frame_data.py` | Per-frame data | APIView, no schema | n/a |
+| `views_s3_videos.py` | S3 video presigned URLs | APIView, no schema | n/a |
+| `views_train_groups.py` | **NEW** Train group schedule — mappings list/template/export/upload, versions list/detail/rollback | mixed; CSV-download views excluded via `@extend_schema(exclude=True)` | n/a (it IS the mapping) |
+
+> **Rule of thumb:** any view that returns task-level data with a `train_metadata` field MUST also expose a `group` field. Use direct PK lookup on `TrainGroupMapping.objects.filter(train_id=...).only("group").first()` (cheap, no annotation gymnastics) for single-task endpoints; use `annotate_train_group(queryset)` from `train_group_query.py` for list endpoints (avoids N+1).
 
 ### URL routing (`urls.py`)
 - `ExtendedTaskViewSet` registered via `DefaultRouter(trailing_slash=False)` → `/api/custom/tasks-extended/<pk>` (NO trailing slash)
