@@ -20,24 +20,36 @@ def annotate_train_group(queryset):
     """
     Annotate a Task queryset with a `train_group` attribute (string or None).
 
-    Uses two correlated subqueries — one to pull the train_id from
-    TaskTrainMetadata for each Task, one to look up the group for that
-    train_id in TrainGroupMapping. This avoids relying on the outer query
-    having a JOIN to TaskTrainMetadata (the views use prefetch_related,
-    which doesn't add a JOIN, so a single OuterRef('train_metadata__...')
-    would silently resolve to NULL).
+    Two annotations chained on the OUTER queryset:
+      1) _train_id  = subquery on TaskTrainMetadata WHERE task_id = Task.pk
+      2) train_group = subquery on TrainGroupMapping WHERE train_id = _train_id
+
+    Why this shape: we can't put the second subquery INSIDE the first
+    (`filter(train_id=Subquery(...))`) because that nests OuterRef one
+    level deeper, and `OuterRef("pk")` in a nested context refers to the
+    *immediate* parent subquery — which is TrainGroupMapping. Because
+    TrainGroupMapping has `train_id` as its primary key, the inner
+    OuterRef("pk") resolves to a varchar `train_id` instead of Task.id
+    (integer), causing a Postgres "operator does not exist: integer =
+    character varying" error.
+
+    Chaining annotations on the OUTER queryset keeps both subqueries at
+    the same depth — each one's OuterRef refers directly to a Task column.
     """
-    train_id_sq = (
-        TaskTrainMetadata.objects
-        .filter(task_id=OuterRef("pk"))
-        .values("train_id")[:1]
+    queryset = queryset.annotate(
+        _train_id=Subquery(
+            TaskTrainMetadata.objects
+            .filter(task_id=OuterRef("pk"))
+            .values("train_id")[:1]
+        )
     )
-    group_sq = (
-        TrainGroupMapping.objects
-        .filter(train_id=Subquery(train_id_sq))
-        .values("group")[:1]
+    return queryset.annotate(
+        train_group=Subquery(
+            TrainGroupMapping.objects
+            .filter(train_id=OuterRef("_train_id"))
+            .values("group")[:1]
+        )
     )
-    return queryset.annotate(train_group=Subquery(group_sq))
 
 
 def filter_by_group(queryset, group_param: str | None):
