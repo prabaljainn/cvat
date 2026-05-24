@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -82,7 +83,7 @@ class UploadViewTest(TestCase):
         csv = b"train_id,group\n3101F,A\n3102F,B\n"
         resp = self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("schedule.csv", csv, "text/csv"), "comment": "first"},
+            data={"file": SimpleUploadedFile("schedule.csv", csv, content_type="text/csv"), "comment": "first"},
             format="multipart",
         )
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -99,8 +100,8 @@ class UploadViewTest(TestCase):
         buf = BytesIO(); wb.save(buf)
         resp = self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("schedule.xlsx", buf.getvalue(),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"file": SimpleUploadedFile("schedule.xlsx", buf.getvalue(),
+                           content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
             format="multipart",
         )
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -121,7 +122,7 @@ class UploadViewTest(TestCase):
         csv = b"train_id,group\n3101F,A\n"
         resp = self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("schedule.csv", csv, "text/csv"), "dry_run": "true"},
+            data={"file": SimpleUploadedFile("schedule.csv", csv, content_type="text/csv"), "dry_run": "true"},
             format="multipart",
         )
         self.assertEqual(resp.status_code, 200, resp.data)
@@ -133,7 +134,7 @@ class UploadViewTest(TestCase):
         csv = b"train_id,group\n,A\n"
         resp = self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("bad.csv", csv, "text/csv")},
+            data={"file": SimpleUploadedFile("bad.csv", csv, content_type="text/csv")},
             format="multipart",
         )
         self.assertEqual(resp.status_code, 400)
@@ -145,7 +146,7 @@ class UploadViewTest(TestCase):
         client = APIClient(); client.force_authenticate(regular)
         resp = client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("x.csv", b"train_id,group\n", "text/csv")},
+            data={"file": SimpleUploadedFile("x.csv", b"train_id,group\n", content_type="text/csv")},
             format="multipart",
         )
         self.assertEqual(resp.status_code, 403)
@@ -159,12 +160,12 @@ class VersionHistoryTest(TestCase):
         # Use the upload endpoint to create two versions
         self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("v1.csv", b"train_id,group\n3101F,A\n", "text/csv")},
+            data={"file": SimpleUploadedFile("v1.csv", b"train_id,group\n3101F,A\n", content_type="text/csv")},
             format="multipart",
         )
         self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("v2.csv", b"train_id,group\n3101F,A\n3102F,B\n", "text/csv"),
+            data={"file": SimpleUploadedFile("v2.csv", b"train_id,group\n3101F,A\n3102F,B\n", content_type="text/csv"),
                   "comment": "added 3102F"},
             format="multipart",
         )
@@ -198,12 +199,12 @@ class RollbackTest(TestCase):
         self.client.force_authenticate(self.admin)
         self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("v1.csv", b"train_id,group\n3101F,A\n", "text/csv")},
+            data={"file": SimpleUploadedFile("v1.csv", b"train_id,group\n3101F,A\n", content_type="text/csv")},
             format="multipart",
         )
         self.client.post(
             "/api/custom/train-groups/mappings/upload/",
-            data={"file": ("v2.csv", b"train_id,group\n3102F,B\n", "text/csv")},
+            data={"file": SimpleUploadedFile("v2.csv", b"train_id,group\n3102F,B\n", content_type="text/csv")},
             format="multipart",
         )
 
@@ -316,6 +317,6 @@ class ExtendedTaskGroupTest(TestCase):
         TrainGroupMapping.objects.create(train_id="3101F", group="A")
 
     def test_detail_includes_group(self):
-        resp = self.client.get(f"/api/custom/tasks-extended/{self.t1.id}/")
+        resp = self.client.get(f"/api/custom/tasks-extended/{self.t1.id}")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data.get("group"), "A")
