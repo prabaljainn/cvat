@@ -13,6 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from cvat.apps.engine.models import Task
 from .models import TaskComment
@@ -24,6 +25,16 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(exclude=True),
+    retrieve=extend_schema(exclude=True),
+    create=extend_schema(exclude=True),
+    update=extend_schema(exclude=True),
+    partial_update=extend_schema(exclude=True),
+    destroy=extend_schema(exclude=True),
+    thread=extend_schema(exclude=True),
+    by_type=extend_schema(exclude=True),
+)
 class TaskCommentViewSet(viewsets.ModelViewSet):
     iam_supports_organization_params = True
     """
@@ -170,6 +181,10 @@ class TaskCommentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(exclude=True),
+    retrieve=extend_schema(exclude=True),
+)
 class TaskCommentsListView(viewsets.ReadOnlyModelViewSet):
     iam_supports_organization_params = True
     """
@@ -246,6 +261,7 @@ class TaskCommentCreateView(APIView):
     # IAM organization field for CVAT's permission system
     iam_organization_field = 'task__organization'
 
+    @extend_schema(exclude=True)
     def post(self, request):
         """Create a new task comment."""
         serializer = TaskCommentCreateSerializer(
@@ -273,6 +289,7 @@ class TaskCommentsStatsView(APIView):
     # IAM organization field for CVAT's permission system
     iam_organization_field = 'task__organization'
 
+    @extend_schema(exclude=True)
     def get(self, request):
         """Get comment statistics for a task or all tasks."""
         task_id = request.query_params.get('task_id')
