@@ -15,6 +15,7 @@ REST endpoints for the train_id → group schedule:
 
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions
 
 # --- Permission policy (single source of truth — swap one line to change scope) ---
@@ -75,6 +76,7 @@ class MappingTemplateCsvView(APIView):
     """GET /api/train-groups/mappings/template.csv — blank example CSV."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(exclude=True)
     def get(self, request):
         resp = HttpResponse(_TEMPLATE_CSV, content_type="text/csv")
         resp["Content-Disposition"] = 'attachment; filename="train_group_template.csv"'
@@ -85,6 +87,7 @@ class MappingExportCsvView(APIView):
     """GET /api/train-groups/mappings/export.csv — current mapping as CSV."""
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(exclude=True)
     def get(self, request):
         buf = StringIO()
         writer = _csv.writer(buf)
