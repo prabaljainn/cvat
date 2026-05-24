@@ -87,6 +87,10 @@ urlpatterns = [
     # Train group schedule endpoints
     path('train-groups/mappings/', views_train_groups.MappingsListView.as_view(),
          name='train-groups-mappings'),
+    path('train-groups/mappings/template.csv', views_train_groups.MappingTemplateCsvView.as_view(),
+         name='train-groups-template-csv'),
+    path('train-groups/mappings/export.csv', views_train_groups.MappingExportCsvView.as_view(),
+         name='train-groups-export-csv'),
 ]
 
 # Add the router URLs

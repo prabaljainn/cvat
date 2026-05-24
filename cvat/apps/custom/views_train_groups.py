@@ -53,3 +53,43 @@ class MappingsListView(ListAPIView):
         if search:
             qs = qs.filter(Q(train_id__icontains=search) | Q(group__icontains=search))
         return qs
+
+
+import csv as _csv
+from io import StringIO
+
+from django.http import HttpResponse
+from rest_framework.views import APIView
+
+
+_TEMPLATE_CSV = (
+    "train_id,group\n"
+    "3101F,A\n"
+    "3102F,B\n"
+    "3103F,C\n"
+)
+
+
+class MappingTemplateCsvView(APIView):
+    """GET /api/train-groups/mappings/template.csv — blank example CSV."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        resp = HttpResponse(_TEMPLATE_CSV, content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="train_group_template.csv"'
+        return resp
+
+
+class MappingExportCsvView(APIView):
+    """GET /api/train-groups/mappings/export.csv — current mapping as CSV."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        buf = StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(["train_id", "group"])
+        for m in TrainGroupMapping.objects.order_by("train_id").values_list("train_id", "group"):
+            writer.writerow(m)
+        resp = HttpResponse(buf.getvalue(), content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="train_group_mapping.csv"'
+        return resp

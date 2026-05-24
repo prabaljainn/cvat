@@ -35,3 +35,28 @@ class MappingsListViewTest(TestCase):
         anon = APIClient()
         resp = anon.get("/api/train-groups/mappings/")
         self.assertEqual(resp.status_code, 401)
+
+
+class TemplateAndExportTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("alice", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_template_returns_csv_with_header(self):
+        resp = self.client.get("/api/train-groups/mappings/template.csv")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        body = resp.content.decode()
+        self.assertIn("train_id,group", body.splitlines()[0])
+
+    def test_export_returns_current_mapping_as_csv(self):
+        TrainGroupMapping.objects.create(train_id="3101F", group="A")
+        TrainGroupMapping.objects.create(train_id="3102F", group="B")
+        resp = self.client.get("/api/train-groups/mappings/export.csv")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        body = resp.content.decode().splitlines()
+        self.assertEqual(body[0], "train_id,group")
+        self.assertIn("3101F,A", body)
+        self.assertIn("3102F,B", body)
