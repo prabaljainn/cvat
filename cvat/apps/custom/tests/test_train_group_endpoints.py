@@ -307,12 +307,13 @@ class TasksSummaryAvailableGroupsTest(TestCase):
 
 class ExtendedTaskGroupTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user("u3", password="pw")
+        # tasks-extended extends CVAT's BaseTaskViewSet which enforces IAM
+        # ownership — the authed user must own the task to see the detail.
+        self.user = User.objects.create_user("u3", password="pw", is_staff=True)
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
-        owner = User.objects.create_user("owner3")
-        self.t1 = Task.objects.create(name="t1", owner=owner)
+        self.t1 = Task.objects.create(name="t1", owner=self.user)
         TaskTrainMetadata.objects.create(task=self.t1, train_id="3101F")
         TrainGroupMapping.objects.create(train_id="3101F", group="A")
 
