@@ -13,6 +13,7 @@ from . import views_analytics
 from . import views_task_comments
 from . import views_frame_data
 from . import views_s3_videos
+from . import views_train_groups
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -82,6 +83,11 @@ urlpatterns = [
          name='task-videos-check'),
     path('tasks/<int:task_id>/videos/<path:video_path>/', views_s3_videos.TaskSingleVideoView.as_view(),
          name='task-single-video'),
+
+    # Train group schedule endpoints (Task 11–17 will fill in views)
+    # path('train-groups/mappings/', views_train_groups.MappingsListView.as_view(),
+    #      name='train-groups-mappings'),
+    # (intentionally commented until views land in later tasks)
 ]
 
 # Add the router URLs
