@@ -212,3 +212,92 @@ class TaskComment(models.Model):
             return TaskComment.objects.filter(
                 models.Q(id=self.id) | models.Q(parent_comment=self)
             ).order_by('created_date')
+
+
+# ==========================================
+# Train Group Schedule Models
+# ==========================================
+
+class TrainGroupMapping(models.Model):
+    """
+    Current source of truth: which group each train_id belongs to.
+    One row per train. Fully rebuilt atomically on every upload.
+    """
+
+    train_id = models.CharField(max_length=100, primary_key=True)
+    group = models.CharField(max_length=50, db_index=True)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="train_group_mappings_updated",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Train Group Mapping"
+        verbose_name_plural = "Train Group Mappings"
+        db_table = "custom_train_group_mapping"
+        indexes = [models.Index(fields=["group", "train_id"])]
+
+    def __str__(self):
+        return f"{self.train_id} -> {self.group}"
+
+
+class TrainGroupMappingVersion(models.Model):
+    """
+    Immutable snapshot of each upload (or rollback).
+    Exactly one row has is_current=True at any time.
+    """
+
+    version_no = models.PositiveIntegerField(unique=True)
+    uploaded_by = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="train_group_mapping_versions",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    comment = models.CharField(max_length=500, blank=True)
+    csv_text = models.TextField(
+        help_text="Canonical CSV form (xlsx/paste uploads normalized to CSV)."
+    )
+    source_format = models.CharField(
+        max_length=16,
+        default="csv",
+        help_text="One of: csv, xlsx, paste, rollback",
+    )
+    row_count = models.PositiveIntegerField()
+    is_current = models.BooleanField(default=False)
+    source_version = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rollbacks",
+        help_text="Set when this version was produced by rolling back to source_version.",
+    )
+    diff_summary = models.JSONField(
+        default=dict,
+        help_text=(
+            "Pre-computed diff vs previous current version: "
+            "{added: [...], removed: [...], changed: [...], counts: {...}}"
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Train Group Mapping Version"
+        verbose_name_plural = "Train Group Mapping Versions"
+        db_table = "custom_train_group_mapping_version"
+        ordering = ["-version_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_current"],
+                condition=models.Q(is_current=True),
+                name="only_one_current_train_group_version",
+            ),
+        ]
+
+    def __str__(self):
+        marker = " (current)" if self.is_current else ""
+        return f"v{self.version_no}{marker}"
