@@ -35,6 +35,36 @@ def _browser_cache_control(expiration: int) -> str:
     return f"private, max-age={expiration}"
 
 
+# Bounds for a presigned-URL expiration, matching the sibling TaskVideosView.
+# Lower bound keeps the cache TTL below the URL lifetime; upper bound is S3's
+# SigV4 7-day cap.
+PRESIGN_EXPIRATION_MIN = 60
+PRESIGN_EXPIRATION_MAX = 604800  # 7 days
+
+
+def validate_expiration(raw) -> int:
+    """
+    Coerce and bounds-check a presigned-URL expiration (seconds).
+
+    Raises ValueError (with a client-facing message) for non-numeric or
+    out-of-range input so callers can return HTTP 400 instead of leaking a
+    500 or producing dead/over-long-lived URLs.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError("video_expiration must be an integer")
+    if value < PRESIGN_EXPIRATION_MIN:
+        raise ValueError(
+            f"video_expiration must be at least {PRESIGN_EXPIRATION_MIN} seconds"
+        )
+    if value > PRESIGN_EXPIRATION_MAX:
+        raise ValueError(
+            f"video_expiration cannot exceed {PRESIGN_EXPIRATION_MAX} seconds (7 days)"
+        )
+    return value
+
+
 # Server-side cache of the assembled videos+thumbnails payload. Caching it keeps
 # the presigned URLs *stable* across requests (so browsers/CDNs cache the actual
 # video/sprite bytes) and skips the S3 listing on hits. The TTL is kept below the
@@ -66,13 +96,29 @@ def get_videos_with_thumbnails_cached(generator, bucket_name: str, folder_path: 
     key = _videos_cache_key(bucket_name, folder_path, expiration)
 
     if not refresh:
-        cached = cache.get(key)
-        if cached is not None:
+        try:
+            cached = cache.get(key)
+        except Exception:
+            # A cache-layer outage (e.g. Redis down) must not break the videos
+            # block when S3 itself is healthy — fall back to a direct listing.
+            logger.warning("videos cache get failed for %s; listing S3 directly", key,
+                           exc_info=True)
+            cached = None
+        # Truthy check: a non-empty list is a hit; None or a stale [] is a miss.
+        if cached:
             return cached
 
     payload = generator.get_videos_with_thumbnails(bucket_name, folder_path, expiration)
-    ttl = max(60, expiration - VIDEOS_CACHE_MARGIN_SECONDS)
-    cache.set(key, payload, ttl)
+
+    # Don't cache empty results: a momentarily-empty folder (not yet populated,
+    # S3 eventual consistency) would otherwise mask videos for the whole TTL.
+    if payload:
+        ttl = max(60, expiration - VIDEOS_CACHE_MARGIN_SECONDS)
+        try:
+            cache.set(key, payload, ttl)
+        except Exception:
+            logger.warning("videos cache set failed for %s", key, exc_info=True)
+
     return payload
 
 
@@ -301,6 +347,10 @@ class S3PresignedURLGenerator:
         result = []
         for obj in objects:
             key = obj['key']
+            # Files under matrix/ are thumbnail assets (or source clips used to
+            # build them), never task videos in their own right.
+            if key.startswith(matrix_root):
+                continue
             if not any(key.lower().endswith(ext) for ext in VIDEO_EXTENSIONS):
                 continue
 

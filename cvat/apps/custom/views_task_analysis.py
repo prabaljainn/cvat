@@ -20,7 +20,11 @@ from rest_framework.permissions import IsAuthenticated
 from cvat.apps.engine.models import Task, Job, Label, LabeledShape, LabeledImage, LabeledTrack, TrackedShape
 from .models import TaskTrainMetadata
 from .annotation_stats import assemble_label_analysis
-from .s3_utils import create_s3_generator_from_env, get_videos_with_thumbnails_cached
+from .s3_utils import (
+    create_s3_generator_from_env,
+    get_videos_with_thumbnails_cached,
+    validate_expiration,
+)
 
 
 class TaskAnalysisView(APIView):
@@ -40,7 +44,14 @@ class TaskAnalysisView(APIView):
     def get(self, request):
         # Get query parameters
         task_id = request.query_params.get('task_id')
-        video_expiration = int(request.query_params.get('video_expiration', 36000))
+        # Validate/bounds-check expiration (60..604800s) before it reaches the
+        # presign call, cache TTL and cache key — mirrors TaskVideosView.
+        try:
+            video_expiration = validate_expiration(
+                request.query_params.get('video_expiration', 36000)
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         # ?refresh=1 bypasses the cached S3 listing and re-generates fresh URLs.
         refresh_videos = str(request.query_params.get('refresh', '')).lower() in ('1', 'true', 'yes')
 

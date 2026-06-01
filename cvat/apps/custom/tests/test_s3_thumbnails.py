@@ -106,6 +106,51 @@ class GetVideosWithThumbnailsTest(unittest.TestCase):
             videos[0]["thumbnails"]["sprites"][0]["url"],
         )
 
+    def test_excludes_video_files_living_under_matrix(self):
+        # A stray/source clip under matrix/ must not be surfaced as a task video.
+        keys = [
+            "p/cam1.mp4",
+            "p/matrix/cam1/clip.mp4",
+            "p/matrix/cam1/cam1.vtt",
+        ]
+        gen, _ = make_generator(keys)
+
+        videos = gen.get_videos_with_thumbnails("bkt", "p", expiration=100)
+
+        self.assertEqual([v["filename"] for v in videos], ["cam1.mp4"])
+
+
+class ValidateExpirationTest(unittest.TestCase):
+    def test_accepts_in_range_values(self):
+        from cvat.apps.custom.s3_utils import validate_expiration
+
+        self.assertEqual(validate_expiration("36000"), 36000)
+        self.assertEqual(validate_expiration(36000), 36000)
+        self.assertEqual(validate_expiration("60"), 60)        # lower bound
+        self.assertEqual(validate_expiration("604800"), 604800)  # upper bound
+
+    def test_rejects_non_numeric(self):
+        from cvat.apps.custom.s3_utils import validate_expiration
+
+        with self.assertRaises(ValueError):
+            validate_expiration("abc")
+
+    def test_rejects_below_minimum(self):
+        from cvat.apps.custom.s3_utils import validate_expiration
+
+        with self.assertRaises(ValueError):
+            validate_expiration("30")
+        with self.assertRaises(ValueError):
+            validate_expiration("0")
+        with self.assertRaises(ValueError):
+            validate_expiration("-5")
+
+    def test_rejects_above_maximum(self):
+        from cvat.apps.custom.s3_utils import validate_expiration
+
+        with self.assertRaises(ValueError):
+            validate_expiration("700000")
+
 
 class PresignedUrlCacheControlTest(unittest.TestCase):
     def test_passes_response_cache_control_when_given(self):
@@ -140,6 +185,16 @@ class FakeCache:
         self.sets.append((key, value, timeout))
 
 
+class RaisingCache:
+    """Cache backend that fails on every op, like an unreachable Redis."""
+
+    def get(self, key, default=None):
+        raise RuntimeError("redis down")
+
+    def set(self, key, value, timeout=None):
+        raise RuntimeError("redis down")
+
+
 class CachedVideosTest(unittest.TestCase):
     def test_miss_calls_generator_and_caches_with_ttl(self):
         from cvat.apps.custom.s3_utils import get_videos_with_thumbnails_cached
@@ -172,20 +227,50 @@ class CachedVideosTest(unittest.TestCase):
         self.assertEqual(out, [{"cached": True}])
         gen.get_videos_with_thumbnails.assert_not_called()
 
-    def test_empty_list_is_a_valid_cache_hit(self):
+    def test_empty_result_is_not_cached(self):
+        # An empty listing (folder not yet populated / eventual consistency)
+        # must not be cached, or it masks videos that appear later.
+        from cvat.apps.custom.s3_utils import get_videos_with_thumbnails_cached
+
+        gen = MagicMock()
+        gen.get_videos_with_thumbnails.return_value = []
+        cache = FakeCache()
+
+        out = get_videos_with_thumbnails_cached(gen, "bkt", "p", 36000, cache=cache)
+
+        self.assertEqual(out, [])
+        self.assertEqual(cache.sets, [])  # nothing written
+
+    def test_stale_empty_cache_entry_is_treated_as_miss(self):
         from cvat.apps.custom.s3_utils import (
             get_videos_with_thumbnails_cached,
             _videos_cache_key,
         )
 
         gen = MagicMock()
+        gen.get_videos_with_thumbnails.return_value = [{"fresh": 1}]
         cache = FakeCache()
         cache.store[_videos_cache_key("bkt", "p", 36000)] = []
 
         out = get_videos_with_thumbnails_cached(gen, "bkt", "p", 36000, cache=cache)
 
-        self.assertEqual(out, [])
-        gen.get_videos_with_thumbnails.assert_not_called()
+        self.assertEqual(out, [{"fresh": 1}])
+        gen.get_videos_with_thumbnails.assert_called_once()
+
+    def test_cache_failure_falls_back_to_generator(self):
+        # A Redis outage must not break the videos block: fall back to S3.
+        from cvat.apps.custom.s3_utils import get_videos_with_thumbnails_cached
+
+        gen = MagicMock()
+        gen.get_videos_with_thumbnails.return_value = [{"x": 1}]
+
+        with self.assertLogs("cvat.apps.custom.s3_utils", level="WARNING"):
+            out = get_videos_with_thumbnails_cached(
+                gen, "bkt", "p", 36000, cache=RaisingCache()
+            )
+
+        self.assertEqual(out, [{"x": 1}])
+        gen.get_videos_with_thumbnails.assert_called_once()
 
     def test_refresh_bypasses_cache(self):
         from cvat.apps.custom.s3_utils import (
@@ -209,7 +294,7 @@ class CachedVideosTest(unittest.TestCase):
         from cvat.apps.custom.s3_utils import get_videos_with_thumbnails_cached
 
         gen = MagicMock()
-        gen.get_videos_with_thumbnails.return_value = []
+        gen.get_videos_with_thumbnails.return_value = [{"k": 1}]
         cache = FakeCache()
 
         get_videos_with_thumbnails_cached(gen, "bkt", "p", 100, cache=cache)
