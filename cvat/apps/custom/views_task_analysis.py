@@ -19,7 +19,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from cvat.apps.engine.models import Task, Job, Label, LabeledShape, LabeledImage, LabeledTrack, TrackedShape
 from .models import TaskTrainMetadata
-from .s3_utils import create_s3_generator_from_env
+from .annotation_stats import assemble_label_analysis
+from .s3_utils import create_s3_generator_from_env, get_videos_with_thumbnails_cached
 
 
 class TaskAnalysisView(APIView):
@@ -40,6 +41,8 @@ class TaskAnalysisView(APIView):
         # Get query parameters
         task_id = request.query_params.get('task_id')
         video_expiration = int(request.query_params.get('video_expiration', 36000))
+        # ?refresh=1 bypasses the cached S3 listing and re-generates fresh URLs.
+        refresh_videos = str(request.query_params.get('refresh', '')).lower() in ('1', 'true', 'yes')
 
         if not task_id:
             return Response(
@@ -69,11 +72,12 @@ class TaskAnalysisView(APIView):
             )
 
         # Build comprehensive task analysis
-        analysis = self._build_task_analysis(task, video_expiration)
+        analysis = self._build_task_analysis(task, video_expiration, refresh_videos)
 
         return Response(analysis)
 
-    def _build_task_analysis(self, task: Task, video_expiration: int = 3600) -> Dict:
+    def _build_task_analysis(self, task: Task, video_expiration: int = 3600,
+                             refresh_videos: bool = False) -> Dict:
         """Build comprehensive task analysis data."""
 
         # 1. Basic task information (similar to CVAT's standard API)
@@ -92,7 +96,7 @@ class TaskAnalysisView(APIView):
         statistics = self._generate_task_statistics(task, jobs, annotation_analysis)
 
         # 6. Get S3 videos with presigned URLs (if available)
-        videos_info = self._get_videos_info(task, video_expiration)
+        videos_info = self._get_videos_info(task, video_expiration, refresh_videos)
 
         # Combine all information
         analysis = {
@@ -172,8 +176,9 @@ class TaskAnalysisView(APIView):
 
         return basic_info
 
-    def _get_videos_info(self, task: Task, expiration: int = 3600) -> Dict:
-        """Get S3 videos with presigned URLs if available."""
+    def _get_videos_info(self, task: Task, expiration: int = 3600,
+                         refresh: bool = False) -> Dict:
+        """Get S3 videos with presigned URLs (and thumbnails) if available."""
 
         videos_info = {
             "available": False,
@@ -202,10 +207,12 @@ class TaskAnalysisView(APIView):
 
                 videos_info["s3_bucket"] = bucket_name
 
-                videos = s3_generator.get_all_videos_with_urls(
-                    bucket_name=bucket_name,
-                    folder_path=server_files_path,
-                    expiration=expiration
+                videos = get_videos_with_thumbnails_cached(
+                    s3_generator,
+                    bucket_name,
+                    server_files_path,
+                    expiration,
+                    refresh=refresh,
                 )
 
                 videos_info["available"] = True
@@ -275,88 +282,42 @@ class TaskAnalysisView(APIView):
         return labels_info
 
     def _analyze_annotations_by_label(self, task: Task, jobs, labels: List[Label]) -> Dict:
-        """Analyze annotations organized by labels."""
+        """
+        Analyze annotations organized by labels.
 
-        analysis = {
-            "total_annotated_frames": 0,
-            "labels_analysis": {}
+        Runs a constant number of grouped queries (independent of job/label
+        counts) and assembles the per-label structure in pure Python. Replaces
+        the previous O(jobs * labels) per-label query loop.
+        """
+        # Evaluate the jobs queryset once; its result cache is reused by the
+        # other consumers (job info, statistics).
+        job_ids = [job.id for job in jobs]
+
+        if not job_ids:
+            return assemble_label_analysis(labels, [], [], [], {})
+
+        shape_rows = LabeledShape.objects.filter(
+            job_id__in=job_ids
+        ).values_list('label_id', 'frame')
+
+        image_rows = LabeledImage.objects.filter(
+            job_id__in=job_ids
+        ).values_list('label_id', 'frame')
+
+        tracked_rows = TrackedShape.objects.filter(
+            track__job_id__in=job_ids
+        ).values_list('track__label_id', 'frame')
+
+        track_counts = {
+            row['label_id']: row['count']
+            for row in LabeledTrack.objects.filter(job_id__in=job_ids)
+            .values('label_id')
+            .annotate(count=Count('id'))
         }
 
-        # Track all annotated frames across all labels
-        all_annotated_frames = set()
-
-        # Analyze each label
-        for label in labels:
-            label_analysis = self._analyze_single_label(task, jobs, label)
-            analysis["labels_analysis"][label.name] = label_analysis
-
-            # Add frames to global set
-            all_annotated_frames.update(label_analysis["annotated_frames"])
-
-        # Set total count
-        analysis["total_annotated_frames"] = len(all_annotated_frames)
-
-        return analysis
-
-    def _analyze_single_label(self, task: Task, jobs, label: Label) -> Dict:
-        """Analyze annotations for a single label."""
-
-        annotated_frames = set()
-        annotation_counts = {
-            "shapes": 0,
-            "tracks": 0,
-            "tags": 0,
-            "total": 0
-        }
-
-        # Analyze each job
-        for job in jobs:
-            # Get frames with this label from LabeledShape
-            shape_frames = LabeledShape.objects.filter(
-                job=job, label=label
-            ).values_list('frame', flat=True)
-
-            shape_count = len(shape_frames)
-            annotated_frames.update(shape_frames)
-            annotation_counts["shapes"] += shape_count
-
-            # Get frames with this label from LabeledImage (tags)
-            image_frames = LabeledImage.objects.filter(
-                job=job, label=label
-            ).values_list('frame', flat=True)
-
-            image_count = len(image_frames)
-            annotated_frames.update(image_frames)
-            annotation_counts["tags"] += image_count
-
-            # Get frames with this label from TrackedShape (tracks)
-            tracked_frames = TrackedShape.objects.filter(
-                track__job=job, track__label=label
-            ).values_list('frame', flat=True)
-
-            # Count unique tracks, not individual tracked shapes
-            track_count = LabeledTrack.objects.filter(
-                job=job, label=label
-            ).count()
-
-            annotated_frames.update(tracked_frames)
-            annotation_counts["tracks"] += track_count
-
-        # Calculate totals
-        annotation_counts["total"] = (
-            annotation_counts["shapes"] +
-            annotation_counts["tracks"] +
-            annotation_counts["tags"]
+        return assemble_label_analysis(
+            labels, shape_rows, image_rows, tracked_rows, track_counts
         )
-
-        return {
-            "label_id": label.id,
-            "label_name": label.name,
-            "label_color": label.color,
-            "annotated_frames": sorted(list(annotated_frames)),
-            "frame_count": len(annotated_frames),
-            "annotation_counts": annotation_counts
-        }
 
 
     def _generate_task_statistics(self, task: Task, jobs, annotation_analysis: Dict) -> Dict:
