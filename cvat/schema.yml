@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CVAT REST API
-  version: 2.65.1
+  version: 2.66.1
   description: REST API for Computer Vision Annotation Tool (CVAT)
   termsOfService: https://www.google.com/policies/terms/
   contact:
@@ -11150,7 +11150,6 @@ components:
           format: date-time
           readOnly: true
         contact:
-          type: object
           readOnly: true
         owner:
           allOf:
@@ -11171,8 +11170,7 @@ components:
           maxLength: 64
         description:
           type: string
-        contact:
-          type: object
+        contact: {}
       required:
       - slug
     PaginatedAccessTokenReadList:
@@ -11992,8 +11990,7 @@ components:
           maxLength: 64
         description:
           type: string
-        contact:
-          type: object
+        contact: {}
     PatchedProjectWriteRequest:
       type: object
       properties:
@@ -14278,10 +14275,8 @@ components:
           type: string
           readOnly: true
         request:
-          type: object
           readOnly: true
         response:
-          type: object
           readOnly: true
     WebhookRead:
       type: object
