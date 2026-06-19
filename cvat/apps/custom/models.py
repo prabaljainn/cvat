@@ -9,6 +9,12 @@ from django.db import models
 from cvat.apps.engine.models import Task
 from django.contrib.auth.models import User
 
+# Re-export TrainGroupSchedule so Django's app registry discovers it
+# under app_label='custom'. The model is defined in the scheduler
+# sub-package to keep the file under the 400-line cap, but it must
+# appear on this module for the existing migrations dir to own it.
+from .scheduler.models import TrainGroupSchedule  # noqa: F401
+
 
 class TaskTrainMetadata(models.Model):
     """

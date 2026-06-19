@@ -15,8 +15,13 @@ REST endpoints for the train_id → group schedule:
 
 from __future__ import annotations
 
+import logging
+
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions
+
+logger = logging.getLogger(__name__)
 
 # --- Permission policy (single source of truth — swap one line to change scope) ---
 # DRF's IsAdminUser passes when user.is_staff is True. Superusers created via
@@ -205,6 +210,12 @@ class UploadView(APIView):
             })
 
         # ---- 4. Apply ----
+        # Capture the live group set BEFORE apply_upload rewrites the
+        # mapping table so the csv-rewrite hook can detect groups that
+        # disappeared entirely (not just train_ids that moved groups).
+        groups_before = set(
+            TrainGroupMapping.objects.values_list("group", flat=True).distinct()
+        )
         try:
             version = apply_upload(
                 rows=rows, user=request.user, comment=comment,
@@ -215,6 +226,40 @@ class UploadView(APIView):
                 {"errors": [{"line": 0, "reason": f"apply failed: {exc}"}]},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+        # ---- 5. CSV-drop-group hook ----
+        # If a group was entirely removed AND the latest active schedule
+        # still references it, append a rewrite row. Deferred to
+        # transaction.on_commit so the rewrite fires only after the CSV
+        # upload truly persists; this decouples the schedule rewrite from
+        # the upload transaction's fate. Hook failures are non-fatal but
+        # logged so operators can detect rotation drift.
+        try:
+            from .scheduler.csv_rewrite import maybe_rewrite_after_csv_upload
+
+            groups_after = set(
+                TrainGroupMapping.objects.values_list("group", flat=True).distinct()
+            )
+            removed_groups = groups_before - groups_after
+
+            def _run_rewrite_hook(removed=removed_groups, user=request.user):
+                try:
+                    warning = maybe_rewrite_after_csv_upload(
+                        removed_groups=removed,
+                        user=user,
+                    )
+                    if warning is not None:
+                        logger.warning(
+                            "csv-rewrite hook surfaced warning: %s", warning
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("csv-rewrite hook failed: %s", exc)
+
+            transaction.on_commit(_run_rewrite_hook)
+        except Exception as exc:  # noqa: BLE001 - hook must never break the upload
+            # Surface the failure in the log so operators can detect drift
+            # rather than discovering it via a stale rotation in the UI.
+            logger.exception("csv-rewrite hook scheduling failed: %s", exc)
 
         return Response({
             "version": version.version_no,
