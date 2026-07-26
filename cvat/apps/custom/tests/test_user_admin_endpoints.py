@@ -4,7 +4,7 @@
 from django.contrib.auth.models import Group, User
 from django.core import mail
 from django.test import TestCase
-from rest_framework.test import APIClient
+from cvat.apps.custom.tests.json_client import JsonAPIClient
 
 from cvat.apps.custom.models import UserAdminAuditLog
 
@@ -18,7 +18,7 @@ def _make_admin(username="console_admin"):
 
 class UserAdminPermissionTest(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = JsonAPIClient()
 
     def test_anonymous_gets_401(self):
         self.assertEqual(self.client.get(USERS_URL).status_code, 401)
@@ -49,7 +49,7 @@ class UserAdminPermissionTest(TestCase):
 class UserAdminCrudTest(TestCase):
     def setUp(self):
         self.admin = _make_admin()
-        self.client = APIClient()
+        self.client = JsonAPIClient()
         self.client.force_authenticate(self.admin)
 
     def test_create_user_with_password_and_role(self):
@@ -192,7 +192,7 @@ class UserAdminCrudTest(TestCase):
 class UserAdminLifecycleTest(TestCase):
     def setUp(self):
         self.admin = _make_admin()
-        self.client = APIClient()
+        self.client = JsonAPIClient()
         self.client.force_authenticate(self.admin)
 
     def test_deactivate_and_reactivate(self):
