@@ -8,8 +8,9 @@ Custom serializers to extend CVAT Task API with train metadata.
 import re
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from cvat.apps.engine.models import Task
-from .models import TaskTrainMetadata, TaskComment, TaxonomyLabel
+from .models import TaskTrainMetadata, TaskComment, TaxonomyLabel, UserAdminAuditLog
 from django.contrib.auth.models import User
 
 
@@ -427,3 +428,72 @@ class TaxonomyLabelSerializer(serializers.ModelSerializer):
                 'A taxonomy label with this name already exists.'
             )
         return name
+
+
+class UserAdminUserSerializer(serializers.ModelSerializer):
+    """User rows for the customer-admin console.
+
+    Exposes email/last_login that CVAT's BasicUserSerializer hides from
+    non-superusers; access is gated at the view (IsAdminUser).
+    """
+
+    role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'role',
+            'is_active',
+            'is_staff',
+            'last_login',
+            'date_joined',
+        ]
+        read_only_fields = ['id', 'is_active', 'is_staff', 'last_login', 'date_joined']
+
+    def get_role(self, user):
+        # Iterate the prefetched cache; .filter() would issue one query per row.
+        if user.is_staff or any(g.name == 'admin' for g in user.groups.all()):
+            return 'admin'
+        return 'user'
+
+
+class UserAdminUserCreateSerializer(serializers.ModelSerializer):
+    """Create payload for the customer-admin console.
+
+    Declared explicitly so the OpenAPI schema and generated SDK carry the
+    password and role fields the console needs.
+    """
+
+    username = serializers.CharField(
+        min_length=5,
+        max_length=150,
+        validators=[UniqueValidator(queryset=User.objects.all())],
+    )
+    password = serializers.CharField(write_only=True, required=False)
+    role = serializers.ChoiceField(choices=['admin', 'user'], default='user')
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'first_name', 'last_name', 'role', 'password']
+
+
+class UserAdminAuditLogSerializer(serializers.ModelSerializer):
+    """Audit rows for the customer-admin console."""
+
+    actor_username = serializers.CharField(source='actor.username', read_only=True, default=None)
+
+    class Meta:
+        model = UserAdminAuditLog
+        fields = [
+            'id',
+            'actor_username',
+            'target_username',
+            'action',
+            'changes',
+            'created_date',
+        ]
