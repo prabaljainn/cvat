@@ -82,6 +82,7 @@ class TaxonomyLabelDetailView(UpdateAPIView):
     serializer_class = TaxonomyLabelSerializer
     queryset = TaxonomyLabel.objects.all()
     http_method_names = ["patch", "options"]
+    filter_backends = []  # CVAT's default backends require search_fields on the view
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
