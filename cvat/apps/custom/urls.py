@@ -14,6 +14,7 @@ from . import views_task_comments
 from . import views_frame_data
 from . import views_s3_videos
 from . import views_train_groups
+from . import views_taxonomy
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -103,6 +104,18 @@ urlpatterns = [
 
     # Train group rotation schedule endpoints (scheduler sub-package)
     path('train-groups/schedule/', include('cvat.apps.custom.scheduler.urls')),
+
+    # Label taxonomy endpoints
+    path('taxonomy/labels/', views_taxonomy.TaxonomyLabelListCreateView.as_view(),
+         name='taxonomy-labels'),
+    path('taxonomy/labels/<int:pk>/', views_taxonomy.TaxonomyLabelDetailView.as_view(),
+         name='taxonomy-label-detail'),
+    path('taxonomy/labels/<int:pk>/archive/', views_taxonomy.TaxonomyLabelArchiveView.as_view(),
+         name='taxonomy-label-archive'),
+    path('taxonomy/labels/<int:pk>/restore/', views_taxonomy.TaxonomyLabelRestoreView.as_view(),
+         name='taxonomy-label-restore'),
+    path('taxonomy/sync/', views_taxonomy.TaxonomySyncView.as_view(),
+         name='taxonomy-sync'),
 ]
 
 # Add the router URLs
