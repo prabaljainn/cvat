@@ -3,7 +3,7 @@
 
 from django.contrib.auth.models import User
 from django.test import TestCase
-from rest_framework.test import APIClient
+from cvat.apps.custom.tests.json_client import JsonAPIClient
 
 from cvat.apps.engine.models import Label, Project
 
@@ -23,7 +23,7 @@ def _make_worker():
 
 class TaxonomyPermissionTest(TestCase):
     def setUp(self):
-        self.client = APIClient()
+        self.client = JsonAPIClient()
 
     def test_anonymous_gets_401(self):
         self.assertEqual(self.client.get(LABELS_URL).status_code, 401)
@@ -50,7 +50,7 @@ class TaxonomyPermissionTest(TestCase):
 class TaxonomyCrudTest(TestCase):
     def setUp(self):
         self.admin = _make_admin()
-        self.client = APIClient()
+        self.client = JsonAPIClient()
         self.client.force_authenticate(self.admin)
 
     def test_create_edit_and_ordering(self):
@@ -115,7 +115,7 @@ class TaxonomyCrudTest(TestCase):
 class TaxonomySyncTest(TestCase):
     def setUp(self):
         self.admin = _make_admin()
-        self.client = APIClient()
+        self.client = JsonAPIClient()
         self.client.force_authenticate(self.admin)
         self.project = Project.objects.create(name="Tokyu", owner=self.admin)
 
