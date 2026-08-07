@@ -3,7 +3,7 @@
 
 """Unit tests for the CSV-drop-group hook.
 
-Exercises maybe_rewrite_after_csv_upload directly so the test does not
+Exercises rewrite_schedule_for_removed_groups directly so the test does not
 need to set up the full CSV upload path. The hook reads the latest
 non-deleted TrainGroupSchedule and decides whether to append a new row.
 """
@@ -16,7 +16,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from cvat.apps.custom.models import TrainGroupSchedule
-from cvat.apps.custom.scheduler.csv_rewrite import maybe_rewrite_after_csv_upload
+from cvat.apps.custom.scheduler.csv_rewrite import rewrite_schedule_for_removed_groups
 
 
 class CsvRewriteHookTest(TestCase):
@@ -32,7 +32,7 @@ class CsvRewriteHookTest(TestCase):
             source="manual",
         )
 
-        result = maybe_rewrite_after_csv_upload(
+        result = rewrite_schedule_for_removed_groups(
             removed_groups={"B"},
             user=self.user,
         )
@@ -57,7 +57,7 @@ class CsvRewriteHookTest(TestCase):
             source="manual",
         )
 
-        result = maybe_rewrite_after_csv_upload(
+        result = rewrite_schedule_for_removed_groups(
             removed_groups={"Z"},  # not referenced by any active schedule
             user=self.user,
         )

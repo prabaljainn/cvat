@@ -110,6 +110,7 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.response import Response
 
+from .scheduler.csv_rewrite import rewrite_schedule_for_removed_groups
 from .train_group_parser import (
     parse_csv, parse_xlsx, parse_pasted, compute_diff, apply_upload,
 )
@@ -235,8 +236,6 @@ class UploadView(APIView):
         # the upload transaction's fate. Hook failures are non-fatal but
         # logged so operators can detect rotation drift.
         try:
-            from .scheduler.csv_rewrite import maybe_rewrite_after_csv_upload
-
             groups_after = set(
                 TrainGroupMapping.objects.values_list("group", flat=True).distinct()
             )
@@ -244,7 +243,7 @@ class UploadView(APIView):
 
             def _run_rewrite_hook(removed=removed_groups, user=request.user):
                 try:
-                    warning = maybe_rewrite_after_csv_upload(
+                    warning = rewrite_schedule_for_removed_groups(
                         removed_groups=removed,
                         user=user,
                     )
@@ -252,6 +251,8 @@ class UploadView(APIView):
                         logger.warning(
                             "csv-rewrite hook surfaced warning: %s", warning
                         )
+                # Deliberately broad: the hook is best-effort and a bug
+                # in it must never fail an already-committed CSV upload.
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("csv-rewrite hook failed: %s", exc)
 

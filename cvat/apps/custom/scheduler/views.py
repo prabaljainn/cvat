@@ -62,7 +62,7 @@ class ScheduleListCreateView(APIView):
 
     def get_permissions(self):
         # Read is open to any authenticated user; writes are admin-only.
-        if self.request.method == "GET":
+        if self.request.method in permissions.SAFE_METHODS:
             return [permissions.IsAuthenticated()]
         return [p() for p in MAPPING_ADMIN_PERMISSIONS]
 

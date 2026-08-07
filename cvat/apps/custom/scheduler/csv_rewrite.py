@@ -52,7 +52,7 @@ def _latest_active_schedule() -> Optional[TrainGroupSchedule]:
     return TrainGroupSchedule.objects.filter(pk=picked.id).first()
 
 
-def maybe_rewrite_after_csv_upload(
+def rewrite_schedule_for_removed_groups(
     *,
     removed_groups: Iterable[str],
     user,
