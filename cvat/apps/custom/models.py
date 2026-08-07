@@ -358,3 +358,46 @@ class TaxonomyLabel(models.Model):
     def __str__(self):
         marker = ' (archived)' if self.is_archived else ''
         return f"{self.name}{marker}"
+
+
+class UserAdminAuditLog(models.Model):
+    """
+    Queryable audit trail for the customer-admin console actions.
+
+    CVAT's native events pipeline ships to Clickhouse and has no REST
+    query surface, so the customer-admin console records its own rows.
+    target_username is snapshotted because target is SET_NULL.
+    """
+
+    class ActionChoices(models.TextChoices):
+        CREATE = 'create', 'Create'
+        UPDATE = 'update', 'Update'
+        DEACTIVATE = 'deactivate', 'Deactivate'
+        REACTIVATE = 'reactivate', 'Reactivate'
+        PASSWORD_RESET = 'password_reset', 'Password reset'
+
+    actor = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='user_admin_actions',
+    )
+    target = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='user_admin_audit_entries',
+    )
+    target_username = models.CharField(max_length=150)
+    action = models.CharField(max_length=20, choices=ActionChoices.choices)
+    changes = models.JSONField(default=dict, blank=True)
+    created_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'User Admin Audit Log'
+        verbose_name_plural = 'User Admin Audit Logs'
+        db_table = 'custom_user_admin_audit'
+        ordering = ['-created_date', '-id']
+
+    def __str__(self):
+        return f"{self.action} {self.target_username}"

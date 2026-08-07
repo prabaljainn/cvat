@@ -15,6 +15,7 @@ from . import views_frame_data
 from . import views_s3_videos
 from . import views_train_groups
 from . import views_taxonomy
+from . import views_user_admin
 
 # Create a router for our extended task endpoints
 router = DefaultRouter(trailing_slash=False)
@@ -116,6 +117,20 @@ urlpatterns = [
          name='taxonomy-label-restore'),
     path('taxonomy/sync/', views_taxonomy.TaxonomySyncView.as_view(),
          name='taxonomy-sync'),
+
+    # User admin console endpoints
+    path('user-admin/users/', views_user_admin.UserAdminListCreateView.as_view(),
+         name='user-admin-users'),
+    path('user-admin/users/<int:pk>/', views_user_admin.UserAdminDetailView.as_view(),
+         name='user-admin-user-detail'),
+    path('user-admin/users/<int:pk>/deactivate/', views_user_admin.UserAdminDeactivateView.as_view(),
+         name='user-admin-deactivate'),
+    path('user-admin/users/<int:pk>/reactivate/', views_user_admin.UserAdminReactivateView.as_view(),
+         name='user-admin-reactivate'),
+    path('user-admin/users/<int:pk>/reset-password/', views_user_admin.UserAdminResetPasswordView.as_view(),
+         name='user-admin-reset-password'),
+    path('user-admin/audit/', views_user_admin.UserAdminAuditListView.as_view(),
+         name='user-admin-audit'),
 ]
 
 # Add the router URLs
