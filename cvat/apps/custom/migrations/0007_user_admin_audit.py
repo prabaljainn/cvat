@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("custom", "0005_taxonomy_label"),
+        ("custom", "0006_taxonomy_label"),
     ]
 
     operations = [
