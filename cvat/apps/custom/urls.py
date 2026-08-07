@@ -100,6 +100,9 @@ urlpatterns = [
     path('train-groups/versions/<int:version_no>/rollback/',
          views_train_groups.RollbackView.as_view(),
          name='train-groups-rollback'),
+
+    # Train group rotation schedule endpoints (scheduler sub-package)
+    path('train-groups/schedule/', include('cvat.apps.custom.scheduler.urls')),
 ]
 
 # Add the router URLs
