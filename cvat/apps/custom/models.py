@@ -307,3 +307,54 @@ class TrainGroupMappingVersion(models.Model):
     def __str__(self):
         marker = " (current)" if self.is_current else ""
         return f"v{self.version_no}{marker}"
+
+
+class TaxonomyLabel(models.Model):
+    """
+    Managed defect taxonomy for annotation classes (Tokyu).
+
+    Deployment-global like TrainGroupMapping: the taxonomy is the single
+    source of truth for annotation labels; syncing pushes active entries
+    into a CVAT project's labels so the annotation picker reads them.
+    Archive-only lifecycle: there is no delete endpoint, so labels that
+    are already used in annotations can never be hard-deleted.
+    """
+
+    class PriorityChoices(models.IntegerChoices):
+        HIGH = 1, 'High'
+        MEDIUM = 2, 'Medium'
+        LOW = 3, 'Low'
+
+    # 64 mirrors engine.Label.name; SafeCharField silently truncates
+    # anything longer on sync, which would corrupt name matching.
+    name = models.CharField(max_length=64, unique=True)
+    color = models.CharField(
+        max_length=7,
+        default='#fa3253',
+        help_text='Hex color in #rrggbb form, mirrored into the CVAT label on sync.',
+    )
+    category = models.CharField(max_length=100, blank=True, default='')
+    priority = models.IntegerField(
+        choices=PriorityChoices.choices,
+        default=PriorityChoices.MEDIUM,
+    )
+    is_archived = models.BooleanField(default=False)
+    created_date = models.DateTimeField(auto_now_add=True)
+    updated_date = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='taxonomy_label_updates',
+    )
+
+    class Meta:
+        verbose_name = 'Taxonomy Label'
+        verbose_name_plural = 'Taxonomy Labels'
+        db_table = 'custom_taxonomy_label'
+        ordering = ['priority', 'name']
+
+    def __str__(self):
+        marker = ' (archived)' if self.is_archived else ''
+        return f"{self.name}{marker}"

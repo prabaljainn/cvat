@@ -5,9 +5,11 @@
 Custom serializers to extend CVAT Task API with train metadata.
 """
 
+import re
+
 from rest_framework import serializers
 from cvat.apps.engine.models import Task
-from .models import TaskTrainMetadata, TaskComment
+from .models import TaskTrainMetadata, TaskComment, TaxonomyLabel
 from django.contrib.auth.models import User
 
 
@@ -384,3 +386,44 @@ class TrainGroupMappingVersionDetailSerializer(TrainGroupMappingVersionListSeria
             "csv_text", "diff_summary",
         ]
         read_only_fields = fields
+
+
+class TaxonomyLabelSerializer(serializers.ModelSerializer):
+    """Serializer for the managed defect taxonomy (Tokyu label management)."""
+
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    updated_by_username = serializers.CharField(source='updated_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = TaxonomyLabel
+        fields = [
+            'id',
+            'name',
+            'color',
+            'category',
+            'priority',
+            'priority_display',
+            'is_archived',
+            'created_date',
+            'updated_date',
+            'updated_by_username',
+        ]
+        read_only_fields = ['id', 'is_archived', 'created_date', 'updated_date']
+
+    def validate_color(self, value):
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+            raise serializers.ValidationError('Color must be a #rrggbb hex string.')
+        return value.lower()
+
+    def validate_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError('Name cannot be blank.')
+        qs = TaxonomyLabel.objects.filter(name=name)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'A taxonomy label with this name already exists.'
+            )
+        return name
