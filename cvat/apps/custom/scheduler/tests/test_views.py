@@ -103,3 +103,95 @@ class ScheduleViewsTest(TestCase):
             f"/api/custom/train-groups/schedule/{row.id}/",
         )
         self.assertEqual(second.status_code, 404)
+
+
+class ScheduleUploadRewriteTest(TestCase):
+    """The CSV upload must repair schedules that reference dropped groups.
+
+    Exercises the full UploadView path (not the hook in isolation) so a
+    regression in the inline wiring, not just the hook, fails the test.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            "alice", password="pw", is_staff=True,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        TrainGroupMapping.objects.bulk_create([
+            TrainGroupMapping(train_id="T1", group="A"),
+            TrainGroupMapping(train_id="T2", group="B"),
+        ])
+
+    def _upload_dropping_group_b(self):
+        # Paste-mode upload keeping only T1 -> A, so group B disappears
+        # from the mapping entirely.
+        return self.client.post(
+            "/api/custom/train-groups/mappings/upload/",
+            {"text": "T1\tA\n"},
+            format="json",
+        )
+
+    def test_upload_dropping_scheduled_group_appends_rewrite_row(self):
+        TrainGroupSchedule.objects.create(
+            start_date=server_today() - datetime.timedelta(days=1),
+            sequence=["A", "B"],
+            saved_by=self.admin,
+        )
+
+        resp = self._upload_dropping_group_b()
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rewrite = TrainGroupSchedule.objects.get(source="csv_rewrite")
+        self.assertEqual(rewrite.sequence, ["A"])
+        self.assertEqual(rewrite.start_date, server_today())
+        codes = {w["code"] for w in resp.data["warnings"]}
+        self.assertNotIn("schedule_would_be_empty", codes)
+
+    def test_upload_emptying_rotation_returns_warning_in_response(self):
+        TrainGroupSchedule.objects.create(
+            start_date=server_today() - datetime.timedelta(days=1),
+            sequence=["B"],
+            saved_by=self.admin,
+        )
+
+        resp = self._upload_dropping_group_b()
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        # The stale row is kept; an empty rotation is unrepresentable, so
+        # no rewrite row may appear.
+        self.assertEqual(
+            TrainGroupSchedule.objects.filter(is_deleted=False).count(), 1,
+        )
+        codes = {w["code"] for w in resp.data["warnings"]}
+        self.assertIn("schedule_would_be_empty", codes)
+
+
+class SchedulePermissionsTest(TestCase):
+    """POST and DELETE are admin-only; a plain authenticated user gets 403."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("bob", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_non_staff_post_returns_403(self):
+        resp = self.client.post(
+            "/api/custom/train-groups/schedule/",
+            {"start_date": server_today().isoformat(), "sequence": ["A"]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(TrainGroupSchedule.objects.count(), 0)
+
+    def test_non_staff_delete_returns_403(self):
+        row = TrainGroupSchedule.objects.create(
+            start_date=server_today(),
+            sequence=["A"],
+        )
+        resp = self.client.delete(
+            f"/api/custom/train-groups/schedule/{row.id}/",
+        )
+        self.assertEqual(resp.status_code, 403)
+        row.refresh_from_db()
+        self.assertFalse(row.is_deleted)

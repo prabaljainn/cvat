@@ -17,6 +17,7 @@ from django.test import TestCase
 
 from cvat.apps.custom.models import TrainGroupSchedule
 from cvat.apps.custom.scheduler.csv_rewrite import rewrite_schedule_for_removed_groups
+from cvat.apps.custom.scheduler.server_today import server_today
 
 
 class CsvRewriteHookTest(TestCase):
@@ -47,6 +48,52 @@ class CsvRewriteHookTest(TestCase):
         latest = rows[0]
         self.assertEqual(latest.sequence, ["A", "C"])
         self.assertEqual(latest.source, "csv_rewrite")
+
+    def test_future_dated_row_gets_corrected_row_with_same_start_date(self):
+        future_start = server_today() + datetime.timedelta(days=5)
+        TrainGroupSchedule.objects.create(
+            start_date=future_start,
+            sequence=["A", "B"],
+            comment="future",
+            saved_by=self.user,
+            source="manual",
+        )
+
+        result = rewrite_schedule_for_removed_groups(
+            removed_groups={"B"},
+            user=self.user,
+        )
+
+        self.assertIsNone(result)
+        corrected = TrainGroupSchedule.objects.get(source="csv_rewrite")
+        # Same start_date: the corrected row shadows the stale one via
+        # the saved_at tiebreak when its day arrives.
+        self.assertEqual(corrected.start_date, future_start)
+        self.assertEqual(corrected.sequence, ["A"])
+        self.assertEqual(
+            TrainGroupSchedule.objects.filter(is_deleted=False).count(), 2,
+        )
+
+    def test_row_starting_today_is_corrected_exactly_once(self):
+        TrainGroupSchedule.objects.create(
+            start_date=server_today(),
+            sequence=["A", "B"],
+            comment="today",
+            saved_by=self.user,
+            source="manual",
+        )
+
+        result = rewrite_schedule_for_removed_groups(
+            removed_groups={"B"},
+            user=self.user,
+        )
+
+        self.assertIsNone(result)
+        # A row starting today is both the active row and a future row;
+        # it must yield exactly one corrected row, not two.
+        corrected = TrainGroupSchedule.objects.filter(source="csv_rewrite")
+        self.assertEqual(corrected.count(), 1)
+        self.assertEqual(corrected.get().sequence, ["A"])
 
     def test_drops_group_not_in_schedule_does_not_append(self):
         TrainGroupSchedule.objects.create(
