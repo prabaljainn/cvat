@@ -60,7 +60,7 @@ class Migration(migrations.Migration):
             model_name="traingroupschedule",
             index=models.Index(
                 fields=["is_deleted", "start_date"],
-                name="custom_trai_is_dele_8f5d24_idx",
+                name="custom_trai_is_dele_64c2d6_idx",
             ),
         ),
     ]

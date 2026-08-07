@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime
 
-from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -94,50 +93,49 @@ class ScheduleListCreateView(APIView):
         sequence: list[str] = cleaned["sequence"]
         comment: str = cleaned.get("comment", "")
 
-        # Dedupe an accidental double-submit: an identical save within the
-        # dedupe window returns the existing row with 200 instead of
-        # creating a duplicate. We wrap the SELECT and CREATE in a single
-        # atomic block with select_for_update() over candidates so two
-        # concurrent identical POSTs serialize: the second blocks until
-        # the first commits and then finds the existing row.
+        # Best-effort dedupe of an accidental double-submit: an identical
+        # save within the dedupe window returns the existing row with 200
+        # instead of creating a duplicate. This is NOT a concurrency
+        # guarantee: two truly concurrent identical POSTs can both pass
+        # the check and create two rows, because no lock can cover a row
+        # that does not exist yet. That rare duplicate is harmless; the
+        # resolver tiebreaks equal start_dates by saved_at.
         window_start = timezone.now() - datetime.timedelta(seconds=DEDUPE_WINDOW_SECONDS)
-        with transaction.atomic():
-            # Filter by the cheap indexed columns only and compare the
-            # sequence in Python. JSONField text-equality semantics differ
-            # across DB backends (Postgres jsonb is value-equal; SQLite
-            # JSONField compares text and is whitespace-sensitive); a
-            # Python-side comparison of the materialised list sidesteps
-            # backend-specific JSON encoding.
-            candidates = list(
-                TrainGroupSchedule.objects
-                .select_for_update()
-                .filter(
-                    is_deleted=False,
-                    start_date=start_date,
-                    saved_at__gte=window_start,
-                )
-                .order_by("-saved_at")
-            )
-            existing = next(
-                (
-                    row for row in candidates
-                    if list(row.sequence or []) == list(sequence)
-                ),
-                None,
-            )
-            if existing is not None:
-                return Response(
-                    ScheduleRowSerializer(existing).data,
-                    status=status.HTTP_200_OK,
-                )
-
-            row = TrainGroupSchedule.objects.create(
+        # Filter by the cheap indexed columns only and compare the
+        # sequence in Python. JSONField text-equality semantics differ
+        # across DB backends (Postgres jsonb is value-equal; SQLite
+        # JSONField compares text and is whitespace-sensitive); a
+        # Python-side comparison of the materialised list sidesteps
+        # backend-specific JSON encoding.
+        candidates = (
+            TrainGroupSchedule.objects
+            .filter(
+                is_deleted=False,
                 start_date=start_date,
-                sequence=sequence,
-                comment=comment,
-                saved_by=request.user if request.user.is_authenticated else None,
-                source=SOURCE_MANUAL,
+                saved_at__gte=window_start,
             )
+            .order_by("-saved_at")
+        )
+        existing = next(
+            (
+                row for row in candidates
+                if list(row.sequence or []) == list(sequence)
+            ),
+            None,
+        )
+        if existing is not None:
+            return Response(
+                ScheduleRowSerializer(existing).data,
+                status=status.HTTP_200_OK,
+            )
+
+        row = TrainGroupSchedule.objects.create(
+            start_date=start_date,
+            sequence=sequence,
+            comment=comment,
+            saved_by=request.user if request.user.is_authenticated else None,
+            source=SOURCE_MANUAL,
+        )
         return Response(
             ScheduleRowSerializer(row).data,
             status=status.HTTP_201_CREATED,

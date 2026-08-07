@@ -9,7 +9,7 @@ Editing history is preserved by never mutating existing rows; soft
 delete hides a row without losing the audit trail.
 
 The model is registered under app_label='custom' via re-export in
-cvat/cvat/apps/custom/models.py because 'scheduler' is a sub-package,
+cvat/apps/custom/models.py because 'scheduler' is a sub-package,
 not a separate Django app.
 """
 

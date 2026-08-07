@@ -3,7 +3,7 @@
 
 """URL routes for the schedule sub-module.
 
-Mounted by cvat/cvat/apps/custom/urls.py under train-groups/schedule/
+Mounted by cvat/apps/custom/urls.py under train-groups/schedule/
 so the public paths are:
   /api/custom/train-groups/schedule/
   /api/custom/train-groups/schedule/<id>/
