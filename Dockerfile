@@ -45,16 +45,8 @@ RUN curl -sL https://github.com/cisco/openh264/archive/v${OPENH264_VERSION}.tar.
     make -j5 && make install-shared PREFIX=${PREFIX} && make clean
 
 WORKDIR /tmp/ffmpeg
-# ffmpeg.org has recurring availability incidents that break every CI
-# image build. Retry hard, then fall back to the GitHub tag mirror of
-# the same release. Download to a file so a truncated stream fails the
-# step instead of silently feeding tar.
-RUN (curl -sL --retry 8 --retry-delay 5 --retry-all-errors \
-        https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz --output ffmpeg.tar.gz || \
-     curl -sL --retry 8 --retry-delay 5 --retry-all-errors \
-        https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz --output ffmpeg.tar.gz) && \
-    tar -zxf ffmpeg.tar.gz --strip-components=1 && \
-    rm ffmpeg.tar.gz && \
+RUN curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz --output - | \
+    tar -zx --strip-components=1 && \
     ./configure --disable-nonfree --disable-gpl --enable-libopenh264 --enable-libmp3lame \
         --enable-shared --disable-static --disable-doc --disable-programs --prefix="${PREFIX}" && \
     make -j5 && make install && make clean
