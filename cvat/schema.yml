@@ -3056,6 +3056,159 @@ paths:
       responses:
         '200':
           description: No response body
+  /api/custom/taxonomy/labels/:
+    get:
+      operationId: custom_list_taxonomy_labels
+      description: GET (any authenticated user) / POST (admin) /api/custom/taxonomy/labels/
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaxonomyLabelList'
+          description: ''
+    post:
+      operationId: custom_create_taxonomy_labels
+      description: GET (any authenticated user) / POST (admin) /api/custom/taxonomy/labels/
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaxonomyLabelRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyLabel'
+          description: ''
+  /api/custom/taxonomy/labels/{id}/:
+    patch:
+      operationId: custom_partial_update_taxonomy_labels
+      description: PATCH /api/custom/taxonomy/labels/<id>/ - edit name/color/category/priority.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTaxonomyLabelRequest'
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyLabel'
+          description: ''
+  /api/custom/taxonomy/labels/{id}/archive/:
+    post:
+      operationId: custom_create_taxonomy_labels_archive
+      description: POST /api/custom/taxonomy/labels/<id>/archive/
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/taxonomy/labels/{id}/restore/:
+    post:
+      operationId: custom_create_taxonomy_labels_restore
+      description: POST /api/custom/taxonomy/labels/<id>/restore/
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/taxonomy/sync/:
+    post:
+      operationId: custom_create_taxonomy_sync
+      description: |-
+        POST /api/custom/taxonomy/sync/ - body {"project_id": <id>}.
+
+        Adds every active taxonomy label missing from the project (matched by
+        name) with the taxonomy color. Existing CVAT labels are never touched.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/custom/train-groups/mappings/:
     get:
       operationId: custom_list_train_groups_mappings
@@ -3104,6 +3257,59 @@ paths:
       - basicAuth: []
       responses:
         '200':
+          description: No response body
+  /api/custom/train-groups/schedule/:
+    get:
+      operationId: custom_retrieve_train_groups_schedule
+      description: GET and POST on /api/custom/train-groups/schedule/.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: custom_create_train_groups_schedule
+      description: GET and POST on /api/custom/train-groups/schedule/.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/train-groups/schedule/{schedule_id}/:
+    delete:
+      operationId: custom_destroy_train_groups_schedule
+      description: DELETE /api/custom/train-groups/schedule/<id>/.
+      parameters:
+      - in: path
+        name: schedule_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '204':
           description: No response body
   /api/custom/train-groups/versions/:
     get:
@@ -3237,6 +3443,193 @@ paths:
     post:
       operationId: custom_create_update_verdict
       description: Update verdict for a task.
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/user-admin/audit/:
+    get:
+      operationId: custom_list_user_admin_audit
+      description: GET /api/custom/user-admin/audit/?target_id=&action=
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserAdminAuditLogList'
+          description: ''
+  /api/custom/user-admin/users/:
+    get:
+      operationId: custom_list_user_admin_users
+      description: GET list with filters / POST create - /api/custom/user-admin/users/
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserAdminUserList'
+          description: ''
+    post:
+      operationId: custom_create_user_admin_users
+      description: GET list with filters / POST create - /api/custom/user-admin/users/
+      tags:
+      - custom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserAdminUserCreateRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/UserAdminUserCreate'
+          description: ''
+  /api/custom/user-admin/users/{id}/:
+    patch:
+      operationId: custom_partial_update_user_admin_users
+      description: PATCH /api/custom/user-admin/users/<id>/ - email, names, role.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/user-admin/users/{id}/deactivate/:
+    post:
+      operationId: custom_create_user_admin_users_deactivate
+      description: POST /api/custom/user-admin/users/<id>/deactivate/
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/user-admin/users/{id}/reactivate/:
+    post:
+      operationId: custom_create_user_admin_users_reactivate
+      description: POST /api/custom/user-admin/users/<id>/reactivate/
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - custom
+      security:
+      - tokenAuth: []
+      - accessTokenAuth: []
+      - sessionAuth: []
+        csrfAuth: []
+        csrfHeaderAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/custom/user-admin/users/{id}/reset-password/:
+    post:
+      operationId: custom_create_user_admin_users_reset_password
+      description: |-
+        POST /api/custom/user-admin/users/<id>/reset-password/
+
+        Uses CVAT's ResetPasswordFormEx: the allauth base form reverses
+        allauth URLs that CVAT never mounts (NoReverseMatch) and would use
+        the sites-framework domain in the link. The token is issued for
+        exactly this user even when several accounts share the email
+        address. email_sent reports the actual outcome and the audit row is
+        written either way.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
       tags:
       - custom
       security:
@@ -8963,6 +9356,20 @@ components:
           type: boolean
       required:
       - name
+    ActionEnum:
+      enum:
+      - create
+      - update
+      - deactivate
+      - reactivate
+      - password_reset
+      type: string
+      description: |-
+        * `create` - Create
+        * `update` - Update
+        * `deactivate` - Deactivate
+        * `reactivate` - Reactivate
+        * `password_reset` - Password reset
     AnnotationConflict:
       type: object
       properties:
@@ -10168,7 +10575,7 @@ components:
           - $ref: '#/components/schemas/BasicUser'
           nullable: true
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/RoleAb8Enum'
         user:
           $ref: '#/components/schemas/BasicUser'
         organization:
@@ -10192,7 +10599,7 @@ components:
       type: object
       properties:
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/RoleAb8Enum'
         email:
           type: string
           format: email
@@ -11091,7 +11498,7 @@ components:
           nullable: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/RoleAb8Enum'
           readOnly: true
         invitation:
           type: string
@@ -11587,6 +11994,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskWithTrainMetadata'
+    PaginatedTaxonomyLabelList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxonomyLabel'
     PaginatedTrainGroupMappingList:
       type: object
       required:
@@ -11633,6 +12063,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TrainGroupMappingVersionList'
+    PaginatedUserAdminAuditLogList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAdminAuditLog'
+    PaginatedUserAdminUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAdminUser'
     PaginatedWebhookDeliveryReadList:
       type: object
       required:
@@ -11841,7 +12317,7 @@ components:
       type: object
       properties:
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/RoleAb8Enum'
         email:
           type: string
           format: email
@@ -11976,7 +12452,7 @@ components:
       type: object
       properties:
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/RoleAb8Enum'
     PatchedOrganizationWriteRequest:
       type: object
       properties:
@@ -12340,6 +12816,28 @@ components:
           type: integer
           writeOnly: true
           nullable: true
+    PatchedTaxonomyLabelRequest:
+      type: object
+      description: Serializer for the managed defect taxonomy (Tokyu label management).
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        color:
+          type: string
+          minLength: 1
+          description: 'Hex color in #rrggbb form, mirrored into the CVAT label on
+            sync.'
+          maxLength: 7
+        category:
+          type: string
+          maxLength: 100
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          minimum: -2147483648
+          maximum: 2147483647
     PatchedUserRequest:
       type: object
       properties:
@@ -12415,6 +12913,16 @@ components:
       required:
       - ANALYTICS
       - MODELS
+    PriorityEnum:
+      enum:
+      - 1
+      - 2
+      - 3
+      type: integer
+      description: |-
+        * `1` - High
+        * `2` - Medium
+        * `3` - Low
     ProjectFileRequest:
       type: object
       properties:
@@ -13073,7 +13581,7 @@ components:
         detail:
           type: string
           readOnly: true
-    RoleEnum:
+    RoleAb8Enum:
       enum:
       - worker
       - supervisor
@@ -13912,6 +14420,72 @@ components:
           type: string
           format: uri
           readOnly: true
+    TaxonomyLabel:
+      type: object
+      description: Serializer for the managed defect taxonomy (Tokyu label management).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 64
+        color:
+          type: string
+          description: 'Hex color in #rrggbb form, mirrored into the CVAT label on
+            sync.'
+          maxLength: 7
+        category:
+          type: string
+          maxLength: 100
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          minimum: -2147483648
+          maximum: 2147483647
+        priority_display:
+          type: string
+          readOnly: true
+        is_archived:
+          type: boolean
+          readOnly: true
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_date:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_by_username:
+          type: string
+          readOnly: true
+      required:
+      - name
+    TaxonomyLabelRequest:
+      type: object
+      description: Serializer for the managed defect taxonomy (Tokyu label management).
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        color:
+          type: string
+          minLength: 1
+          description: 'Hex color in #rrggbb form, mirrored into the CVAT label on
+            sync.'
+          maxLength: 7
+        category:
+          type: string
+          maxLength: 100
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/PriorityEnum'
+          minimum: -2147483648
+          maximum: 2147483647
+      required:
+      - name
     Token:
       type: object
       description: Serializer for Token model.
@@ -14056,7 +14630,6 @@ components:
           readOnly: true
           description: Canonical CSV form (xlsx/paste uploads normalized to CSV).
         diff_summary:
-          type: object
           readOnly: true
           description: 'Pre-computed diff vs previous current version: {added: [...],
             removed: [...], changed: [...], counts: {...}}'
@@ -14155,6 +14728,152 @@ components:
       required:
       - groups
       - username
+    UserAdminAuditLog:
+      type: object
+      description: Audit rows for the customer-admin console.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        actor_username:
+          type: string
+          readOnly: true
+        target_username:
+          type: string
+          maxLength: 150
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        changes: {}
+        created_date:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - target_username
+    UserAdminUser:
+      type: object
+      description: |-
+        User rows for the customer-admin console.
+
+        Exposes email/last_login that CVAT's BasicUserSerializer hides from
+        non-superusers; access is gated at the view (IsAdminUser).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: Staff status
+          description: Designates whether the user can log into this admin site.
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - username
+    UserAdminUserCreate:
+      type: object
+      description: |-
+        Create payload for the customer-admin console.
+
+        Declared explicitly so the OpenAPI schema and generated SDK carry the
+        password and role fields the console needs.
+      properties:
+        username:
+          type: string
+          maxLength: 150
+          minLength: 5
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/UserAdminUserCreateRoleEnum'
+          default: user
+      required:
+      - username
+    UserAdminUserCreateRequest:
+      type: object
+      description: |-
+        Create payload for the customer-admin console.
+
+        Declared explicitly so the OpenAPI schema and generated SDK carry the
+        password and role fields the console needs.
+      properties:
+        username:
+          type: string
+          minLength: 5
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/UserAdminUserCreateRoleEnum'
+          default: user
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - username
+    UserAdminUserCreateRoleEnum:
+      enum:
+      - admin
+      - user
+      type: string
+      description: |-
+        * `admin` - admin
+        * `user` - user
     UserIdentifiers:
       type: object
       properties:
